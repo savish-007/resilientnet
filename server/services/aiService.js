@@ -52,7 +52,7 @@ const calculatePriorityScore = (severity, category) => {
 
 };
 
-const recommendResource = async (category, sosId)  => {
+const recommendResource = async (category, incidentId) => {
 
     let resourceCategory;
 
@@ -92,7 +92,7 @@ const recommendResource = async (category, sosId)  => {
             r.status,
 
             ST_Distance(
-                s.location,
+                i.location,
                 ST_SetSRID(
                     ST_MakePoint(
                         r.longitude,
@@ -103,18 +103,15 @@ const recommendResource = async (category, sosId)  => {
             ) AS distance
 
         FROM resources r
-        CROSS JOIN sos_alerts s
+        CROSS JOIN incidents i
 
         WHERE
-
-            s.id = $1
+            i.id = $1
 
         AND
-
             r.category = $2
 
         AND
-
             r.status = 'AVAILABLE'
 
         ORDER BY distance
@@ -122,7 +119,7 @@ const recommendResource = async (category, sosId)  => {
         LIMIT 1
         `,
         [
-            sosId,
+            incidentId,
             resourceCategory
         ]
     );
@@ -130,21 +127,15 @@ const recommendResource = async (category, sosId)  => {
     if (result.rows.length === 0) {
 
         return {
-
             name: "No Available Resource",
             distance: null
-
         };
 
     }
 
     return {
-
         name: result.rows[0].name,
-
-        distance:
-            Number(result.rows[0].distance).toFixed(0)
-
+        distance: Number(result.rows[0].distance).toFixed(0)
     };
 
 };

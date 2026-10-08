@@ -1,6 +1,8 @@
+
 import { useEffect } from "react";
 import { Grid, Card, CardContent, Typography } from "@mui/material";
 import api from "../api/api";
+import socket from "../services/socket";
 import WarningIcon from "@mui/icons-material/Warning";
 import GroupsIcon from "@mui/icons-material/Groups";
 import InventoryIcon from "@mui/icons-material/Inventory";
@@ -16,6 +18,15 @@ const StatsCards = () => {
         fetchStats();
     }, []);
 
+    useEffect(() => {
+        socket.on("dashboardStats", (updatedStats) => {
+            setStats(updatedStats);
+        });
+
+        return () => {
+            socket.off("dashboardStats");
+        };
+    }, []);
     const fetchStats = async () => {
         try {
             const token = localStorage.getItem("token");

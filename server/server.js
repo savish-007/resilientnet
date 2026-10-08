@@ -10,6 +10,8 @@ const resourceRoutes = require("./routes/resourceRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const volunteerRoutes = require("./routes/volunteerRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
+const incidentRoutes = require("./routes/incidentRoutes");
+const resourceRequestRoutes = require("./routes/resourceRequestRoutes");
 
 
 const app = express();
@@ -33,7 +35,8 @@ app.use("/api/auth", authRoutes);
 
 app.use("/api/volunteers", volunteerRoutes);
 app.use("/api/analytics", analyticsRoutes);
-
+app.use("/api/incidents", incidentRoutes);
+app.use("/api/resource-requests", resourceRequestRoutes);
 
 
 app.get("/", (req, res) => {

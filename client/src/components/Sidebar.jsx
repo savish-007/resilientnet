@@ -47,11 +47,21 @@ const Sidebar = () => {
                     <ListItemText primary="Dashboard" />
                 </ListItemButton>
 
-                <ListItemButton>
+                <ListItemButton
+                    component="a"
+                    href="/sos"
+>
                     <ListItemIcon sx={{ color: "white" }}>
-                        <WarningIcon />
+                         <WarningIcon />
                     </ListItemIcon>
                     <ListItemText primary="SOS Alerts" />
+                </ListItemButton>
+
+                <ListItemButton
+                    component="a"
+                    href="/resources"
+>
+                    <ListItemText primary="Resources" />
                 </ListItemButton>
 
                 <ListItemButton>
@@ -80,6 +90,13 @@ const Sidebar = () => {
                         <AssessmentIcon />
                     </ListItemIcon>
                     <ListItemText primary="Reports" />
+                </ListItemButton>
+
+                <ListItemButton
+                     component="a"
+                     href="/resource-requests"
+>
+                     <ListItemText primary="Resource Requests" />
                 </ListItemButton>
 
             </List>
