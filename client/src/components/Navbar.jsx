@@ -1,15 +1,23 @@
+
 import {
     AppBar,
     Toolbar,
     Typography,
     IconButton,
     Avatar,
-    Box
+    Box,
+    Button
 } from "@mui/material";
 import NotificationMenu from "./NotificationMenu";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 
 const Navbar = () => {
+    const handleLogout = () => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        window.location.href = "/";
+    };
+
     return (
         <AppBar
             position="static"
@@ -20,7 +28,6 @@ const Navbar = () => {
             }}
         >
             <Toolbar>
-
                 <Typography
                     variant="h5"
                     sx={{
@@ -39,6 +46,14 @@ const Navbar = () => {
                     </Avatar>
                 </Box>
 
+                <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={handleLogout}
+                    sx={{ ml: 2 }}
+                >
+                    Logout
+                </Button>
             </Toolbar>
         </AppBar>
     );

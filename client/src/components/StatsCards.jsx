@@ -81,7 +81,7 @@ const StatsCards = () => {
         md: 3
     }}
     key={card.title}
->                    
+>
 <Card
                         sx={{
                             borderLeft: `6px solid ${card.color}`,

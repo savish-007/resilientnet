@@ -71,7 +71,10 @@ const Sidebar = () => {
                     <ListItemText primary="Resources" />
                 </ListItemButton>
 
-                <ListItemButton>
+                <ListItemButton
+                    component="a"
+                    href="/volunteers"
+                >
                     <ListItemIcon sx={{ color: "white" }}>
                         <GroupsIcon />
                     </ListItemIcon>
