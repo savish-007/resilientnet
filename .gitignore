@@ -34,3 +34,9 @@ server/uploads/
 # Temporary files
 *.tmp
 *.temp
+# Android APK binaries
+*.apk
+
+# Local controller backups
+*.backup
+*.pre-sos-fix

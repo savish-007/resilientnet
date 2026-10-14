@@ -1,9 +1,11 @@
-
 const express = require("express");
 const router = express.Router();
 
 const authenticate = require("../middleware/authMiddleware");
-const requireAdmin = require("../middleware/adminMiddleware");
+const {
+    requireAdmin,
+    requireAdminOrResponder
+} = require("../middleware/adminMiddleware");
 
 const {
     getAllVolunteers,
@@ -12,37 +14,42 @@ const {
     getMyAssignments,
     getMyVolunteerProfile,
     updateMyAvailability,
-    updateVolunteerAvailability
+    updateVolunteerAvailability,
+    updateVolunteerRole,
+    getVolunteerRequests,
+    approveVolunteerRequest,
+    rejectVolunteerRequest
 } = require("../controllers/volunteerController");
 
+// List all active volunteers (accessible by Admin and Volunteer Responders)
+router.get("/", authenticate, requireAdminOrResponder, getAllVolunteers);
 
-router.get("/", authenticate, requireAdmin, getAllVolunteers);
+// Admin-only: View pending volunteer requests
+router.get("/requests", authenticate, requireAdmin, getVolunteerRequests);
 
-// Self-service routes — keep these before /:id routes
+// Self-service routes for logged-in volunteer
 router.get("/me", authenticate, getMyVolunteerProfile);
 router.get("/my-assignments", authenticate, getMyAssignments);
-router.patch(
-    "/me/availability",
-    authenticate,
-    updateMyAvailability
-);
+router.patch("/me/availability", authenticate, updateMyAvailability);
 
-// Existing assignment routes
-router.post("/assign", authenticate, requireAdmin, assignVolunteer);
+// Assign volunteers to incidents (Admin and Volunteer Responders)
+router.post("/assign", authenticate, requireAdminOrResponder, assignVolunteer);
 router.get(
     "/assigned/:incidentId",
     authenticate,
-    requireAdmin,
+    requireAdminOrResponder,
     getAssignedVolunteers
 );
 
-// Existing admin-only availability route
+// Admin-only: Volunteer management and approvals
+router.patch("/:id/approve", authenticate, requireAdmin, approveVolunteerRequest);
+router.delete("/:id/reject", authenticate, requireAdmin, rejectVolunteerRequest);
 router.patch(
     "/:id/availability",
     authenticate,
     requireAdmin,
     updateVolunteerAvailability
 );
-
+router.patch("/:id/role", authenticate, requireAdmin, updateVolunteerRole);
 
 module.exports = router;

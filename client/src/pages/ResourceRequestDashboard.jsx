@@ -13,12 +13,30 @@ import {
     DialogTitle,
     FormControl,
     Grid,
+    InputAdornment,
     InputLabel,
+    LinearProgress,
     MenuItem,
+    Paper,
     Select,
+    Stack,
     TextField,
     Typography
 } from "@mui/material";
+
+import DashboardLayout from "../layouts/DashboardLayout";
+import Sidebar from "../components/Sidebar";
+import Navbar from "../components/Navbar";
+
+import AssignmentRoundedIcon from "@mui/icons-material/AssignmentRounded";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import LocalShippingRoundedIcon from "@mui/icons-material/LocalShippingRounded";
+import { API_BASE_URL } from "../config/apiConfig";
 
 const ResourceRequestDashboard = () => {
     const [requests, setRequests] = useState([]);
@@ -32,6 +50,7 @@ const ResourceRequestDashboard = () => {
     const [editingRequestId, setEditingRequestId] = useState(null);
     const [formError, setFormError] = useState("");
 
+    const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("ALL");
     const [priorityFilter, setPriorityFilter] = useState("ALL");
 
@@ -41,7 +60,7 @@ const ResourceRequestDashboard = () => {
         resource_name: "",
         quantity_requested: "",
         quantity_allocated: 0,
-        unit: "",
+        unit: "Packs",
         priority: "MEDIUM",
         status: "REQUESTED",
         notes: ""
@@ -49,1135 +68,720 @@ const ResourceRequestDashboard = () => {
 
     const token = localStorage.getItem("token");
 
-    // --------------------------------------------------
-    // FETCH RESOURCE REQUESTS
-    // --------------------------------------------------
-
     const fetchRequests = async () => {
         try {
             setLoading(true);
             setError("");
 
-            const response = await fetch(
-                "http://localhost:5000/api/resource-requests",
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
+            const response = await fetch(`${API_BASE_URL}/resource-requests`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
                 }
-            );
+            });
 
             const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Failed to load requests");
 
-            if (!response.ok) {
-                throw new Error(
-                    data.message ||
-                        "Failed to load resource requests"
-                );
-            }
-
-            setRequests(data);
+            setRequests(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error(err);
-
-            setError(
-                err.message ||
-                    "Failed to load resource requests"
-            );
+            setError(err.message || "Failed to load requests");
         } finally {
             setLoading(false);
         }
     };
 
-    // --------------------------------------------------
-    // FETCH INCIDENTS
-    // --------------------------------------------------
-
     const fetchIncidents = async () => {
         try {
-            const response = await fetch(
-                "http://localhost:5000/api/incidents",
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
+            const response = await fetch(`${API_BASE_URL}/incidents`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
                 }
-            );
+            });
 
             const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data.message ||
-                        "Failed to load incidents"
-                );
+            if (response.ok && Array.isArray(data)) {
+                setIncidents(data);
             }
-
-            setIncidents(data);
         } catch (err) {
-            console.error(err);
-
-            setFormError(
-                err.message ||
-                    "Failed to load incidents"
-            );
+            console.error("Failed to load incidents:", err);
         }
     };
-
-    // --------------------------------------------------
-    // INITIAL LOAD
-    // --------------------------------------------------
 
     useEffect(() => {
         fetchRequests();
         fetchIncidents();
     }, []);
 
-    // --------------------------------------------------
-    // FILTER REQUESTS
-    // --------------------------------------------------
+    const stats = useMemo(() => {
+        const total = requests.length;
+        const critical = requests.filter((r) => r.priority === "CRITICAL" || r.priority === "HIGH").length;
+        const pending = requests.filter((r) => r.status === "REQUESTED").length;
+        const fulfilled = requests.filter((r) => r.status === "FULFILLED").length;
+
+        return { total, critical, pending, fulfilled };
+    }, [requests]);
 
     const filteredRequests = useMemo(() => {
-        return requests.filter((request) => {
-            const statusMatch =
-                statusFilter === "ALL" ||
-                request.status === statusFilter;
+        const query = search.trim().toLowerCase();
 
-            const priorityMatch =
-                priorityFilter === "ALL" ||
-                request.priority === priorityFilter;
+        return requests.filter((item) => {
+            const matchesSearch = [
+                item.resource_name,
+                item.resource_category,
+                item.requested_by_name,
+                item.incident_number,
+                item.notes
+            ].some((val) => String(val || "").toLowerCase().includes(query));
 
-            return statusMatch && priorityMatch;
+            const matchesStatus =
+                statusFilter === "ALL" || item.status === statusFilter;
+
+            const matchesPriority =
+                priorityFilter === "ALL" || item.priority === priorityFilter;
+
+            return matchesSearch && matchesStatus && matchesPriority;
         });
-    }, [
-        requests,
-        statusFilter,
-        priorityFilter
-    ]);
-
-    // --------------------------------------------------
-    // STATUS COLOR
-    // --------------------------------------------------
-
-    const getStatusColor = (status) => {
-        switch (status) {
-            case "FULFILLED":
-                return "success";
-
-            case "REQUESTED":
-                return "warning";
-
-            case "ALLOCATED":
-                return "info";
-
-            case "CANCELLED":
-                return "error";
-
-            default:
-                return "default";
-        }
-    };
-
-    // --------------------------------------------------
-    // PRIORITY COLOR
-    // --------------------------------------------------
-
-    const getPriorityColor = (priority) => {
-        switch (priority) {
-            case "HIGH":
-                return "error";
-
-            case "MEDIUM":
-                return "warning";
-
-            case "LOW":
-                return "success";
-
-            default:
-                return "default";
-        }
-    };
-
-    // --------------------------------------------------
-    // FORM CHANGE
-    // --------------------------------------------------
-
-    const handleFormChange = (event) => {
-        const { name, value } = event.target;
-
-        setFormData((prev) => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    // --------------------------------------------------
-    // RESET FORM
-    // --------------------------------------------------
+    }, [requests, search, statusFilter, priorityFilter]);
 
     const resetForm = () => {
         setFormData({
-            incident_id: "",
-            resource_category: "",
+            incident_id: incidents[0]?.id || "",
+            resource_category: "Drinking Water",
             resource_name: "",
             quantity_requested: "",
             quantity_allocated: 0,
-            unit: "",
+            unit: "Packs",
             priority: "MEDIUM",
             status: "REQUESTED",
             notes: ""
         });
-
-        setEditingRequestId(null);
         setFormError("");
     };
-
-    // --------------------------------------------------
-    // OPEN CREATE DIALOG
-    // --------------------------------------------------
 
     const handleOpenDialog = () => {
         resetForm();
+        setEditingRequestId(null);
         setOpenDialog(true);
     };
 
-    // --------------------------------------------------
-    // CLOSE DIALOG
-    // --------------------------------------------------
+    const handleEditRequest = (req) => {
+        setFormError("");
+        setEditingRequestId(req.id);
+        setFormData({
+            incident_id: req.incident_id || incidents[0]?.id || "",
+            resource_category: req.resource_category || "Drinking Water",
+            resource_name: req.resource_name || "",
+            quantity_requested: req.quantity_requested ?? "",
+            quantity_allocated: req.quantity_allocated ?? 0,
+            unit: req.unit || "Packs",
+            priority: req.priority || "MEDIUM",
+            status: req.status || "REQUESTED",
+            notes: req.notes || ""
+        });
+        setOpenDialog(true);
+    };
 
-    const handleCloseDialog = () => {
-        if (creating) {
+    const handleSaveRequest = async () => {
+        if (!formData.resource_name.trim() || formData.quantity_requested === "" || !formData.unit) {
+            setFormError("Resource name, quantity, and unit are required.");
             return;
         }
 
-        setOpenDialog(false);
-        resetForm();
-    };
-
-    // --------------------------------------------------
-    // CREATE REQUEST
-    // --------------------------------------------------
-
-    const handleCreateRequest = async () => {
-        try {
-            setFormError("");
-
-            if (
-                !formData.incident_id ||
-                !formData.resource_category ||
-                !formData.resource_name ||
-                formData.quantity_requested === "" ||
-                !formData.unit
-            ) {
-                setFormError(
-                    "Incident, category, resource name, quantity and unit are required."
-                );
-
-                return;
-            }
-
-            if (
-                Number(formData.quantity_requested) <= 0
-            ) {
-                setFormError(
-                    "Requested quantity must be greater than 0."
-                );
-
-                return;
-            }
-
-            setCreating(true);
-
-            const response = await fetch(
-                "http://localhost:5000/api/resource-requests",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        incident_id:
-                            formData.incident_id,
-
-                        resource_category:
-                            formData.resource_category,
-
-                        resource_name:
-                            formData.resource_name,
-
-                        quantity_requested:
-                            Number(
-                                formData.quantity_requested
-                            ),
-
-                        unit:
-                            formData.unit,
-
-                        priority:
-                            formData.priority,
-
-                        notes:
-                            formData.notes || null
-                    })
-                }
-            );
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data.message ||
-                        "Failed to create resource request"
-                );
-            }
-
-            setRequests((prev) => [
-                data.request,
-                ...prev
-            ]);
-
-            setOpenDialog(false);
-            resetForm();
-        } catch (err) {
-            console.error(err);
-
-            setFormError(
-                err.message ||
-                    "Failed to create resource request"
-            );
-        } finally {
-            setCreating(false);
-        }
-    };
-
-    // --------------------------------------------------
-    // OPEN EDIT / ALLOCATE DIALOG
-    // --------------------------------------------------
-
-    const handleEditRequest = (request) => {
-        setEditingRequestId(request.id);
-
-        setFormData({
-            incident_id:
-                request.incident_id || "",
-
-            resource_category:
-                request.resource_category || "",
-
-            resource_name:
-                request.resource_name || "",
-
-            quantity_requested:
-                request.quantity_requested || "",
-
-            quantity_allocated:
-                request.quantity_allocated || 0,
-
-            unit:
-                request.unit || "",
-
-            priority:
-                request.priority || "MEDIUM",
-
-            status:
-                request.status || "REQUESTED",
-
-            notes:
-                request.notes || ""
-        });
-
+        setCreating(true);
         setFormError("");
-        setOpenDialog(true);
-    };
 
-    // --------------------------------------------------
-    // UPDATE REQUEST
-    // --------------------------------------------------
-
-    const handleUpdateRequest = async () => {
         try {
-            setFormError("");
+            const isEditing = Boolean(editingRequestId);
+            const url = isEditing
+                ? `${API_BASE_URL}/resource-requests/${editingRequestId}`
+                : `${API_BASE_URL}/resource-requests`;
 
-            const requestedQuantity =
-                Number(
-                    formData.quantity_requested
-                );
+            const method = isEditing ? "PUT" : "POST";
 
-            const allocatedQuantity =
-                Number(
-                    formData.quantity_allocated
-                );
-
-            if (allocatedQuantity < 0) {
-                setFormError(
-                    "Allocated quantity cannot be negative."
-                );
-
-                return;
-            }
-
-            if (
-                allocatedQuantity >
-                requestedQuantity
-            ) {
-                setFormError(
-                    "Allocated quantity cannot exceed the requested quantity."
-                );
-
-                return;
-            }
-
-            setCreating(true);
-
-            const response = await fetch(
-                `http://localhost:5000/api/resource-requests/${editingRequestId}`,
-                {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        quantity_allocated:
-                            allocatedQuantity,
-
-                        priority:
-                            formData.priority,
-
-                        status:
-                            formData.status,
-
-                        notes:
-                            formData.notes || null
-                    })
-                }
-            );
+            const response = await fetch(url, {
+                method,
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    incident_id: formData.incident_id || null,
+                    resource_category: formData.resource_category.trim(),
+                    resource_name: formData.resource_name.trim(),
+                    quantity_requested: Number(formData.quantity_requested),
+                    quantity_allocated: Number(formData.quantity_allocated) || 0,
+                    unit: formData.unit.trim(),
+                    priority: formData.priority,
+                    status: formData.status,
+                    notes: formData.notes?.trim() || null
+                })
+            });
 
             const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data.message ||
-                        "Failed to update resource request"
-                );
-            }
-
-            setRequests((prev) =>
-                prev.map((request) =>
-                    request.id ===
-                    editingRequestId
-                        ? {
-                              ...request,
-                              ...data.request
-                          }
-                        : request
-                )
-            );
+            if (!response.ok) throw new Error(data.message || "Failed to save request");
 
             setOpenDialog(false);
             resetForm();
+            fetchRequests();
         } catch (err) {
-            console.error(err);
-
-            setFormError(
-                err.message ||
-                    "Failed to update resource request"
-            );
+            setFormError(err.message || "Failed to save request");
         } finally {
             setCreating(false);
         }
     };
 
-    // --------------------------------------------------
-    // RENDER
-    // --------------------------------------------------
+    const getPriorityBadge = (priority) => {
+        if (priority === "CRITICAL") return { bg: "#FEE2E2", text: "#DC2626", label: "Critical" };
+        if (priority === "HIGH") return { bg: "#FEF3C7", text: "#D97706", label: "High" };
+        return { bg: "#E0F2FE", text: "#0284C7", label: "Medium" };
+    };
+
+    const getStatusBadge = (status) => {
+        if (status === "FULFILLED") return { bg: "#DCFCE7", text: "#15803D", label: "Fulfilled" };
+        if (status === "ALLOCATED") return { bg: "#E0F2FE", text: "#0284C7", label: "Allocated" };
+        return { bg: "#FEF3C7", text: "#D97706", label: "Requested" };
+    };
 
     return (
-        <Box sx={{ p: 3 }}>
+        <DashboardLayout>
+            <Sidebar />
 
-            {/* HEADER */}
-
-            <Box
-                sx={{
-                    display: "flex",
-                    justifyContent:
-                        "space-between",
-                    alignItems: "center",
-                    mb: 3,
-                    gap: 2,
-                    flexWrap: "wrap"
+            <div
+                style={{
+                    flex: 1,
+                    marginLeft: "25px",
+                    width: "calc(100vw - 305px)",
+                    overflowX: "hidden"
                 }}
             >
-                <Box>
-                    <Typography
-                        variant="h4"
-                        fontWeight="700"
-                    >
-                        Resource Requests
-                    </Typography>
+                <Navbar />
 
-                    <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ mt: 0.5 }}
-                    >
-                        Manage emergency resource
-                        requests linked to incidents.
-                    </Typography>
-                </Box>
-
-                <Button
-                    variant="contained"
-                    onClick={handleOpenDialog}
-                >
-                    New Resource Request
-                </Button>
-            </Box>
-
-            {/* FILTERS */}
-
-            <Box
-                sx={{
-                    display: "flex",
-                    gap: 2,
-                    mb: 3,
-                    flexWrap: "wrap"
-                }}
-            >
-                <FormControl
-                    sx={{ minWidth: 180 }}
-                >
-                    <InputLabel>
-                        Status
-                    </InputLabel>
-
-                    <Select
-                        value={statusFilter}
-                        label="Status"
-                        onChange={(e) =>
-                            setStatusFilter(
-                                e.target.value
-                            )
-                        }
-                    >
-                        <MenuItem value="ALL">
-                            All Statuses
-                        </MenuItem>
-
-                        <MenuItem value="REQUESTED">
-                            Requested
-                        </MenuItem>
-
-                        <MenuItem value="ALLOCATED">
-                            Allocated
-                        </MenuItem>
-
-                        <MenuItem value="FULFILLED">
-                            Fulfilled
-                        </MenuItem>
-
-                        <MenuItem value="CANCELLED">
-                            Cancelled
-                        </MenuItem>
-                    </Select>
-                </FormControl>
-
-                <FormControl
-                    sx={{ minWidth: 180 }}
-                >
-                    <InputLabel>
-                        Priority
-                    </InputLabel>
-
-                    <Select
-                        value={priorityFilter}
-                        label="Priority"
-                        onChange={(e) =>
-                            setPriorityFilter(
-                                e.target.value
-                            )
-                        }
-                    >
-                        <MenuItem value="ALL">
-                            All Priorities
-                        </MenuItem>
-
-                        <MenuItem value="HIGH">
-                            High
-                        </MenuItem>
-
-                        <MenuItem value="MEDIUM">
-                            Medium
-                        </MenuItem>
-
-                        <MenuItem value="LOW">
-                            Low
-                        </MenuItem>
-                    </Select>
-                </FormControl>
-            </Box>
-
-            {/* ERROR */}
-
-            {error && (
-                <Alert
-                    severity="error"
-                    sx={{ mb: 3 }}
-                >
-                    {error}
-                </Alert>
-            )}
-
-            {/* LOADING / REQUESTS */}
-
-            {loading ? (
-                <Box
-                    sx={{
-                        display: "flex",
-                        justifyContent:
-                            "center",
-                        py: 8
+                <div
+                    style={{
+                        padding: "25px",
+                        width: "100%",
+                        boxSizing: "border-box"
                     }}
                 >
-                    <CircularProgress />
-                </Box>
-            ) : filteredRequests.length === 0 ? (
-                <Alert severity="info">
-                    No resource requests found.
-                </Alert>
-            ) : (
-                <Grid
-                    container
-                    spacing={3}
-                >
-                    {filteredRequests.map(
-                        (request) => (
-                            <Grid
-                                key={request.id}
-                                size={{
-                                    xs: 12,
-                                    md: 6,
-                                    lg: 4
-                                }}
-                            >
-                                <Card
-                                    sx={{
-                                        height: "100%",
-                                        borderRadius: 2
-                                    }}
-                                >
-                                    <CardContent>
-
-                                        {/* CARD HEADER */}
-
-                                        <Box
-                                            sx={{
-                                                display:
-                                                    "flex",
-                                                justifyContent:
-                                                    "space-between",
-                                                alignItems:
-                                                    "flex-start",
-                                                gap: 1,
-                                                mb: 2
-                                            }}
-                                        >
-                                            <Typography
-                                                variant="h6"
-                                                fontWeight="700"
-                                            >
-                                                {
-                                                    request.resource_name
-                                                }
-                                            </Typography>
-
-                                            <Chip
-                                                label={
-                                                    request.status
-                                                }
-                                                color={getStatusColor(
-                                                    request.status
-                                                )}
-                                                size="small"
-                                            />
-                                        </Box>
-
-                                        {/* INCIDENT */}
-
-                                        <Typography
-                                            variant="body2"
-                                            color="text.secondary"
-                                            sx={{
-                                                mb: 1
-                                            }}
-                                        >
-                                            Incident:{" "}
-                                            <strong>
-                                                {
-                                                    request.incident_number
-                                                }
-                                            </strong>
-                                        </Typography>
-
-                                        <Typography
-                                            variant="body2"
-                                            color="text.secondary"
-                                            sx={{
-                                                mb: 1
-                                            }}
-                                        >
-                                            {
-                                                request.incident_title
-                                            }
-                                        </Typography>
-
-                                        {/* CATEGORY */}
-
-                                        <Typography
-                                            variant="body2"
-                                            sx={{
-                                                mb: 1
-                                            }}
-                                        >
-                                            Category:{" "}
-                                            <strong>
-                                                {
-                                                    request.resource_category
-                                                }
-                                            </strong>
-                                        </Typography>
-
-                                        {/* REQUESTED */}
-
-                                        <Typography
-                                            variant="body2"
-                                            sx={{
-                                                mb: 1
-                                            }}
-                                        >
-                                            Requested:{" "}
-                                            <strong>
-                                                {
-                                                    request.quantity_requested
-                                                }{" "}
-                                                {
-                                                    request.unit
-                                                }
-                                            </strong>
-                                        </Typography>
-
-                                        {/* ALLOCATED */}
-
-                                        <Typography
-                                            variant="body2"
-                                            sx={{
-                                                mb: 1
-                                            }}
-                                        >
-                                            Allocated:{" "}
-                                            <strong>
-                                                {
-                                                    request.quantity_allocated
-                                                }{" "}
-                                                {
-                                                    request.unit
-                                                }
-                                            </strong>
-                                        </Typography>
-
-                                        {/* PRIORITY + USER */}
-
-                                        <Box
-                                            sx={{
-                                                display:
-                                                    "flex",
-                                                gap: 1,
-                                                mt: 2,
-                                                flexWrap:
-                                                    "wrap"
-                                            }}
-                                        >
-                                            <Chip
-                                                label={`Priority: ${request.priority}`}
-                                                color={getPriorityColor(
-                                                    request.priority
-                                                )}
-                                                size="small"
-                                            />
-
-                                            <Chip
-                                                label={`By: ${
-                                                    request.requested_by_name ||
-                                                    "Unknown"
-                                                }`}
-                                                variant="outlined"
-                                                size="small"
-                                            />
-                                        </Box>
-
-                                        {/* NOTES */}
-
-                                        {request.notes && (
-                                            <Typography
-                                                variant="body2"
-                                                color="text.secondary"
-                                                sx={{
-                                                    mt: 2
-                                                }}
-                                            >
-                                                {
-                                                    request.notes
-                                                }
-                                            </Typography>
-                                        )}
-
-                                        {/* EDIT BUTTON */}
-
-                                        <Button
-                                            variant="outlined"
-                                            size="small"
-                                            sx={{
-                                                mt: 2
-                                            }}
-                                            onClick={() =>
-                                                handleEditRequest(
-                                                    request
-                                                )
-                                            }
-                                        >
-                                            Edit / Allocate
-                                        </Button>
-
-                                    </CardContent>
-                                </Card>
-                            </Grid>
-                        )
-                    )}
-                </Grid>
-            )}
-
-            {/* CREATE / UPDATE DIALOG */}
-
-            <Dialog
-                open={openDialog}
-                onClose={handleCloseDialog}
-                fullWidth
-                maxWidth="sm"
-            >
-                <DialogTitle>
-                    {editingRequestId
-                        ? "Update Resource Request"
-                        : "New Resource Request"}
-                </DialogTitle>
-
-                <DialogContent>
-
-                    {/* FORM ERROR */}
-
-                    {formError && (
-                        <Alert
-                            severity="error"
-                            sx={{
-                                mt: 1,
-                                mb: 2
-                            }}
-                        >
-                            {formError}
-                        </Alert>
-                    )}
-
-                    {/* INCIDENT */}
-
-                    <FormControl
-                        fullWidth
-                        sx={{ mt: 1 }}
-                    >
-                        <InputLabel>
-                            Incident
-                        </InputLabel>
-
-                        <Select
-                            name="incident_id"
-                            value={
-                                formData.incident_id
-                            }
-                            label="Incident"
-                            onChange={
-                                handleFormChange
-                            }
-                            disabled={
-                                Boolean(
-                                    editingRequestId
-                                )
-                            }
-                        >
-                            {incidents.map(
-                                (incident) => (
-                                    <MenuItem
-                                        key={
-                                            incident.id
-                                        }
-                                        value={
-                                            incident.id
-                                        }
-                                    >
-                                        {
-                                            incident.incident_number
-                                        }{" "}
-                                        —{" "}
-                                        {
-                                            incident.title
-                                        }
-                                    </MenuItem>
-                                )
-                            )}
-                        </Select>
-                    </FormControl>
-
-                    {/* RESOURCE CATEGORY */}
-
-                    <TextField
-                        fullWidth
-                        label="Resource Category"
-                        name="resource_category"
-                        value={
-                            formData.resource_category
-                        }
-                        onChange={
-                            handleFormChange
-                        }
-                        placeholder="RESCUE, MEDICAL, FOOD..."
-                        margin="normal"
-                        disabled={
-                            Boolean(
-                                editingRequestId
-                            )
-                        }
-                    />
-
-                    {/* RESOURCE NAME */}
-
-                    <TextField
-                        fullWidth
-                        label="Resource Name"
-                        name="resource_name"
-                        value={
-                            formData.resource_name
-                        }
-                        onChange={
-                            handleFormChange
-                        }
-                        placeholder="Rescue Boat, Medical Kit..."
-                        margin="normal"
-                        disabled={
-                            Boolean(
-                                editingRequestId
-                            )
-                        }
-                    />
-
-                    {/* QUANTITY + UNIT */}
-
+                    {/* Header */}
                     <Box
                         sx={{
                             display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            mb: 3.5,
+                            flexWrap: "wrap",
                             gap: 2
                         }}
                     >
-                        <TextField
-                            fullWidth
-                            label="Quantity Requested"
-                            name="quantity_requested"
-                            type="number"
-                            value={
-                                formData.quantity_requested
-                            }
-                            onChange={
-                                handleFormChange
-                            }
-                            margin="normal"
-                            inputProps={{
-                                min: 1
-                            }}
-                            disabled={
-                                Boolean(
-                                    editingRequestId
-                                )
-                            }
-                        />
-
-                        <TextField
-                            fullWidth
-                            label="Unit"
-                            name="unit"
-                            value={
-                                formData.unit
-                            }
-                            onChange={
-                                handleFormChange
-                            }
-                            placeholder="unit, kits, vehicles..."
-                            margin="normal"
-                            disabled={
-                                Boolean(
-                                    editingRequestId
-                                )
-                            }
-                        />
-                    </Box>
-
-                    {/* EDIT-ONLY FIELDS */}
-
-                    {editingRequestId && (
-                        <>
-                            {/* QUANTITY ALLOCATED */}
-
-                            <TextField
-                                fullWidth
-                                label="Quantity Allocated"
-                                name="quantity_allocated"
-                                type="number"
-                                value={
-                                    formData.quantity_allocated
-                                }
-                                onChange={
-                                    handleFormChange
-                                }
-                                margin="normal"
-                                inputProps={{
-                                    min: 0
+                        <Stack direction="row" spacing={2} alignItems="center">
+                            <Box
+                                component="img"
+                                src="/logo.png"
+                                alt="ResilientNet Logo"
+                                sx={{
+                                    width: 50,
+                                    height: 50,
+                                    borderRadius: "16px",
+                                    boxShadow: "0 4px 14px rgba(2, 132, 199, 0.2)",
+                                    objectFit: "cover"
                                 }}
                             />
-
-                            {/* STATUS */}
-
-                            <FormControl
-                                fullWidth
-                                sx={{ mt: 1 }}
-                            >
-                                <InputLabel>
-                                    Status
-                                </InputLabel>
-
-                                <Select
-                                    name="status"
-                                    value={
-                                        formData.status
-                                    }
-                                    label="Status"
-                                    onChange={
-                                        handleFormChange
-                                    }
+                            <Box>
+                                <Typography
+                                    variant="h4"
+                                    sx={{
+                                        fontWeight: 800,
+                                        color: "#0F172A",
+                                        letterSpacing: "-0.5px"
+                                    }}
                                 >
-                                    <MenuItem value="REQUESTED">
-                                        Requested
-                                    </MenuItem>
+                                    Emergency Resource Requests
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: "#64748B", mt: 0.3 }}>
+                                    Review and fulfill supply requests from disaster zones, shelters, and citizens.
+                                </Typography>
+                            </Box>
+                        </Stack>
 
-                                    <MenuItem value="ALLOCATED">
-                                        Allocated
-                                    </MenuItem>
+                        <Button
+                            variant="contained"
+                            onClick={handleOpenDialog}
+                            startIcon={<AddRoundedIcon />}
+                            sx={{
+                                minHeight: 46,
+                                px: 3,
+                                borderRadius: "12px",
+                                background: "linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)",
+                                fontWeight: 750,
+                                textTransform: "none",
+                                boxShadow: "0 6px 20px rgba(2, 132, 199, 0.28)",
+                                "&:hover": {
+                                    background: "linear-gradient(135deg, #0369A1 0%, #0284C7 100%)"
+                                }
+                            }}
+                        >
+                            Create Supply Request
+                        </Button>
+                    </Box>
 
-                                    <MenuItem value="FULFILLED">
-                                        Fulfilled
-                                    </MenuItem>
-
-                                    <MenuItem value="CANCELLED">
-                                        Cancelled
-                                    </MenuItem>
-                                </Select>
-                            </FormControl>
-                        </>
+                    {error && (
+                        <Alert severity="error" sx={{ mb: 3, borderRadius: "12px" }}>
+                            {error}
+                        </Alert>
                     )}
 
-                    {/* PRIORITY */}
+                    {/* Summary Cards */}
+                    <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
+                        {[
+                            {
+                                label: "Total Requests",
+                                value: stats.total,
+                                sub: "All time requests",
+                                icon: <AssignmentRoundedIcon />,
+                                color: "#2563EB",
+                                bg: "#EFF6FF"
+                            },
+                            {
+                                label: "High / Critical",
+                                value: stats.critical,
+                                sub: "Life safety urgency",
+                                icon: <WarningAmberRoundedIcon />,
+                                color: "#DC2626",
+                                bg: "#FEE2E2"
+                            },
+                            {
+                                label: "Pending Allocation",
+                                value: stats.pending,
+                                sub: "Awaiting dispatch",
+                                icon: <HourglassTopRoundedIcon />,
+                                color: "#D97706",
+                                bg: "#FEF3C7"
+                            },
+                            {
+                                label: "Fulfilled / Delivered",
+                                value: stats.fulfilled,
+                                sub: "Completed deliveries",
+                                icon: <CheckCircleRoundedIcon />,
+                                color: "#16A34A",
+                                bg: "#DCFCE7"
+                            }
+                        ].map((stat) => (
+                            <Grid item xs={12} sm={6} md={3} key={stat.label}>
+                                <Card
+                                    elevation={0}
+                                    sx={{
+                                        p: 2.2,
+                                        borderRadius: "16px",
+                                        bgcolor: "#FFFFFF",
+                                        border: "1px solid #E2E8F0",
+                                        boxShadow: "0 2px 10px rgba(0,0,0,0.02)",
+                                        transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                                        "&:hover": {
+                                            transform: "translateY(-3px)",
+                                            boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
+                                        }
+                                    }}
+                                >
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                        <Box>
+                                            <Typography variant="caption" sx={{ color: "#64748B", fontWeight: 700 }}>
+                                                {stat.label}
+                                            </Typography>
+                                            <Typography variant="h4" sx={{ fontWeight: 800, color: "#0F172A", my: 0.5 }}>
+                                                {stat.value}
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: "#94A3B8" }}>
+                                                {stat.sub}
+                                            </Typography>
+                                        </Box>
+                                        <Box
+                                            sx={{
+                                                width: 48,
+                                                height: 48,
+                                                borderRadius: "14px",
+                                                bgcolor: stat.bg,
+                                                color: stat.color,
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center"
+                                            }}
+                                        >
+                                            {stat.icon}
+                                        </Box>
+                                    </Stack>
+                                </Card>
+                            </Grid>
+                        ))}
+                    </Grid>
 
-                    <FormControl
-                        fullWidth
-                        sx={{ mt: 2 }}
+                    {/* Filters & Search */}
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            p: 2,
+                            borderRadius: "16px",
+                            bgcolor: "#FFFFFF",
+                            border: "1px solid #E2E8F0",
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
+                            mb: 3.5,
+                            display: "flex",
+                            gap: 2,
+                            flexWrap: "wrap",
+                            alignItems: "center"
+                        }}
                     >
-                        <InputLabel>
-                            Priority
-                        </InputLabel>
+                        <TextField
+                            placeholder="Search requests by item, requester, or incident..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            sx={{
+                                flex: 1,
+                                minWidth: 260,
+                                "& .MuiOutlinedInput-root": {
+                                    borderRadius: "12px",
+                                    bgcolor: "#F8FAFC"
+                                }
+                            }}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchRoundedIcon sx={{ color: "#94A3B8" }} />
+                                    </InputAdornment>
+                                )
+                            }}
+                        />
 
-                        <Select
-                            name="priority"
-                            value={
-                                formData.priority
-                            }
-                            label="Priority"
-                            onChange={
-                                handleFormChange
-                            }
+                        <FormControl sx={{ minWidth: 150 }}>
+                            <InputLabel id="status-filter">Status</InputLabel>
+                            <Select
+                                labelId="status-filter"
+                                value={statusFilter}
+                                label="Status"
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                sx={{ borderRadius: "12px", bgcolor: "#F8FAFC" }}
+                            >
+                                <MenuItem value="ALL">All Statuses</MenuItem>
+                                <MenuItem value="REQUESTED">Requested</MenuItem>
+                                <MenuItem value="ALLOCATED">Allocated</MenuItem>
+                                <MenuItem value="FULFILLED">Fulfilled</MenuItem>
+                            </Select>
+                        </FormControl>
+
+                        <FormControl sx={{ minWidth: 150 }}>
+                            <InputLabel id="priority-filter">Priority</InputLabel>
+                            <Select
+                                labelId="priority-filter"
+                                value={priorityFilter}
+                                label="Priority"
+                                onChange={(e) => setPriorityFilter(e.target.value)}
+                                sx={{ borderRadius: "12px", bgcolor: "#F8FAFC" }}
+                            >
+                                <MenuItem value="ALL">All Priorities</MenuItem>
+                                <MenuItem value="CRITICAL">Critical</MenuItem>
+                                <MenuItem value="HIGH">High</MenuItem>
+                                <MenuItem value="MEDIUM">Medium</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Paper>
+
+                    {/* Requests Grid */}
+                    {loading ? (
+                        <Box sx={{ py: 8, textAlign: "center" }}>
+                            <CircularProgress size={36} />
+                            <Typography sx={{ mt: 2, color: "#64748B", fontWeight: 600 }}>
+                                Loading resource requests...
+                            </Typography>
+                        </Box>
+                    ) : filteredRequests.length === 0 ? (
+                        <Paper
+                            elevation={0}
+                            sx={{
+                                p: 6,
+                                textAlign: "center",
+                                borderRadius: "16px",
+                                bgcolor: "#FFFFFF",
+                                border: "1px dashed #CBD5E1"
+                            }}
                         >
-                            <MenuItem value="HIGH">
-                                High
-                            </MenuItem>
+                            <AssignmentRoundedIcon sx={{ fontSize: 48, color: "#94A3B8", mb: 1.5 }} />
+                            <Typography variant="h6" sx={{ fontWeight: 700, color: "#334155" }}>
+                                No resource requests found
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: "#64748B", mt: 0.5 }}>
+                                No requests currently match the selected filters.
+                            </Typography>
+                        </Paper>
+                    ) : (
+                        <Grid container spacing={2.5}>
+                            {filteredRequests.map((req) => {
+                                const priority = getPriorityBadge(req.priority);
+                                const status = getStatusBadge(req.status);
+                                const progress = Math.min(
+                                    100,
+                                    Math.round(((req.quantity_allocated || 0) / (req.quantity_requested || 1)) * 100)
+                                );
 
-                            <MenuItem value="MEDIUM">
-                                Medium
-                            </MenuItem>
+                                return (
+                                    <Grid item xs={12} sm={6} md={4} key={req.id}>
+                                        <Card
+                                            elevation={0}
+                                            sx={{
+                                                p: 2.5,
+                                                borderRadius: "18px",
+                                                bgcolor: "#FFFFFF",
+                                                border: "1px solid #E2E8F0",
+                                                boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                justifyContent: "space-between",
+                                                height: "100%",
+                                                transition: "all 0.2s ease",
+                                                "&:hover": {
+                                                    borderColor: "#CBD5E1",
+                                                    boxShadow: "0 10px 28px rgba(0,0,0,0.07)",
+                                                    transform: "translateY(-2px)"
+                                                }
+                                            }}
+                                        >
+                                            <Box>
+                                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.5 }}>
+                                                    <Chip
+                                                        label={priority.label}
+                                                        size="small"
+                                                        sx={{
+                                                            fontWeight: 800,
+                                                            bgcolor: priority.bg,
+                                                            color: priority.text,
+                                                            borderRadius: "8px"
+                                                        }}
+                                                    />
 
-                            <MenuItem value="LOW">
-                                Low
-                            </MenuItem>
-                        </Select>
-                    </FormControl>
+                                                    <Chip
+                                                        label={status.label}
+                                                        size="small"
+                                                        sx={{
+                                                            fontWeight: 800,
+                                                            bgcolor: status.bg,
+                                                            color: status.text,
+                                                            borderRadius: "8px"
+                                                        }}
+                                                    />
+                                                </Stack>
 
-                    {/* NOTES */}
+                                                <Typography variant="h6" sx={{ fontWeight: 800, color: "#0F172A", mb: 0.5, lineHeight: 1.3 }}>
+                                                    {req.resource_name}
+                                                </Typography>
 
-                    <TextField
+                                                <Typography variant="body2" sx={{ color: "#64748B", mb: 2 }}>
+                                                    Category: <strong>{req.resource_category}</strong>
+                                                </Typography>
+
+                                                {/* Fulfillment Progress Bar */}
+                                                <Paper elevation={0} sx={{ p: 1.5, borderRadius: "12px", bgcolor: "#F8FAFC", border: "1px solid #F1F5F9", mb: 2 }}>
+                                                    <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.8 }}>
+                                                        <Typography variant="caption" sx={{ color: "#64748B", fontWeight: 700 }}>
+                                                            ALLOCATED / NEEDED
+                                                        </Typography>
+                                                        <Typography variant="caption" sx={{ color: "#0F172A", fontWeight: 800 }}>
+                                                            {req.quantity_allocated || 0} / {req.quantity_requested} {req.unit} ({progress}%)
+                                                        </Typography>
+                                                    </Stack>
+                                                    <LinearProgress
+                                                        variant="determinate"
+                                                        value={progress}
+                                                        sx={{
+                                                            height: 8,
+                                                            borderRadius: 4,
+                                                            bgcolor: "#E2E8F0",
+                                                            "& .MuiLinearProgress-bar": {
+                                                                borderRadius: 4,
+                                                                bgcolor: progress === 100 ? "#10B981" : "#0284C7"
+                                                            }
+                                                        }}
+                                                    />
+                                                </Paper>
+
+                                                <Typography variant="caption" sx={{ color: "#94A3B8", display: "block" }}>
+                                                    Requested by: <strong style={{ color: "#475569" }}>{req.requested_by_name || "Citizen / Field Worker"}</strong>
+                                                </Typography>
+                                                {req.notes && (
+                                                    <Typography variant="caption" sx={{ color: "#64748B", fontStyle: "italic", mt: 0.5, display: "block" }}>
+                                                        "{req.notes}"
+                                                    </Typography>
+                                                )}
+                                            </Box>
+
+                                            <Button
+                                                fullWidth
+                                                variant="outlined"
+                                                startIcon={<LocalShippingRoundedIcon />}
+                                                onClick={() => handleEditRequest(req)}
+                                                sx={{
+                                                    mt: 2,
+                                                    borderRadius: "10px",
+                                                    textTransform: "none",
+                                                    fontWeight: 750,
+                                                    borderColor: "#CBD5E1",
+                                                    color: "#0F172A",
+                                                    "&:hover": { borderColor: "#0284C7", bgcolor: "#EFF6FF" }
+                                                }}
+                                            >
+                                                Allocate & Manage
+                                            </Button>
+                                        </Card>
+                                    </Grid>
+                                );
+                            })}
+                        </Grid>
+                    )}
+
+                    {/* Allocate / Edit Dialog */}
+                    <Dialog
+                        open={openDialog}
+                        onClose={() => !creating && setOpenDialog(false)}
+                        maxWidth="sm"
                         fullWidth
-                        label="Notes"
-                        name="notes"
-                        value={
-                            formData.notes
-                        }
-                        onChange={
-                            handleFormChange
-                        }
-                        multiline
-                        rows={3}
-                        margin="normal"
-                    />
-
-                </DialogContent>
-
-                {/* DIALOG BUTTONS */}
-
-                <DialogActions>
-
-                    <Button
-                        onClick={
-                            handleCloseDialog
-                        }
-                        disabled={creating}
+                        PaperProps={{ sx: { borderRadius: "20px", p: 1 } }}
                     >
-                        Cancel
-                    </Button>
+                        <DialogTitle sx={{ fontWeight: 800, color: "#0F172A" }}>
+                            {editingRequestId ? "Manage Resource Allocation" : "Create Resource Request"}
+                        </DialogTitle>
 
-                    <Button
-                        variant="contained"
-                        onClick={
-                            editingRequestId
-                                ? handleUpdateRequest
-                                : handleCreateRequest
-                        }
-                        disabled={creating}
-                    >
-                        {creating
-                            ? editingRequestId
-                                ? "Updating..."
-                                : "Creating..."
-                            : editingRequestId
-                            ? "Update Request"
-                            : "Create Request"}
-                    </Button>
+                        <DialogContent>
+                            {formError && (
+                                <Alert severity="error" sx={{ mb: 2, borderRadius: "10px" }}>
+                                    {formError}
+                                </Alert>
+                            )}
 
-                </DialogActions>
-            </Dialog>
+                            <Stack spacing={2} sx={{ mt: 1 }}>
+                                <TextField
+                                    fullWidth
+                                    label="Item Name"
+                                    value={formData.resource_name}
+                                    onChange={(e) => setFormData({ ...formData, resource_name: e.target.value })}
+                                    required
+                                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}
+                                />
 
-        </Box>
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6}>
+                                        <TextField
+                                            select
+                                            fullWidth
+                                            label="Category"
+                                            value={formData.resource_category}
+                                            onChange={(e) => setFormData({ ...formData, resource_category: e.target.value })}
+                                            sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}
+                                        >
+                                            {["Drinking Water", "Food & Rations", "First Aid & Medicine", "Blankets & Shelter", "Hygiene Supplies"].map((c) => (
+                                                <MenuItem key={c} value={c}>{c}</MenuItem>
+                                            ))}
+                                        </TextField>
+                                    </Grid>
+
+                                    <Grid item xs={12} sm={6}>
+                                        <FormControl fullWidth>
+                                            <InputLabel>Priority</InputLabel>
+                                            <Select
+                                                value={formData.priority}
+                                                label="Priority"
+                                                onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                                                sx={{ borderRadius: "12px" }}
+                                            >
+                                                <MenuItem value="CRITICAL">🔴 Critical</MenuItem>
+                                                <MenuItem value="HIGH">🟡 High</MenuItem>
+                                                <MenuItem value="MEDIUM">🟢 Medium</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                </Grid>
+
+                                <Grid container spacing={2}>
+                                    <Grid item xs={6}>
+                                        <TextField
+                                            fullWidth
+                                            type="number"
+                                            label="Quantity Requested"
+                                            value={formData.quantity_requested}
+                                            onChange={(e) => setFormData({ ...formData, quantity_requested: e.target.value })}
+                                            required
+                                            sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}
+                                        />
+                                    </Grid>
+
+                                    <Grid item xs={6}>
+                                        <TextField
+                                            fullWidth
+                                            label="Unit"
+                                            value={formData.unit}
+                                            onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                                            required
+                                            sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}
+                                        />
+                                    </Grid>
+                                </Grid>
+
+                                <Grid container spacing={2}>
+                                    <Grid item xs={6}>
+                                        <TextField
+                                            fullWidth
+                                            type="number"
+                                            label="Quantity Allocated"
+                                            value={formData.quantity_allocated}
+                                            onChange={(e) => setFormData({ ...formData, quantity_allocated: e.target.value })}
+                                            sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}
+                                        />
+                                    </Grid>
+
+                                    <Grid item xs={6}>
+                                        <FormControl fullWidth>
+                                            <InputLabel>Status</InputLabel>
+                                            <Select
+                                                value={formData.status}
+                                                label="Status"
+                                                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                                sx={{ borderRadius: "12px" }}
+                                            >
+                                                <MenuItem value="REQUESTED">Requested</MenuItem>
+                                                <MenuItem value="ALLOCATED">Allocated</MenuItem>
+                                                <MenuItem value="FULFILLED">Fulfilled</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                </Grid>
+
+                                <TextField
+                                    fullWidth
+                                    multiline
+                                    rows={2}
+                                    label="Notes & Logistics Details"
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}
+                                />
+                            </Stack>
+                        </DialogContent>
+
+                        <DialogActions sx={{ px: 3, pb: 2 }}>
+                            <Button onClick={() => setOpenDialog(false)} disabled={creating} sx={{ borderRadius: "10px", color: "#64748B", fontWeight: 700 }}>
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="contained"
+                                onClick={handleSaveRequest}
+                                disabled={creating}
+                                sx={{ borderRadius: "10px", px: 3, fontWeight: 750, bgcolor: "#0284C7", textTransform: "none" }}
+                            >
+                                {creating ? <CircularProgress size={20} color="inherit" /> : "Save Allocation"}
+                            </Button>
+                        </DialogActions>
+                    </Dialog>
+                </div>
+            </div>
+        </DashboardLayout>
     );
 };
 

@@ -1,5 +1,5 @@
 const pool = require("../config/db");
-
+const { randomUUID } = require("crypto");
 
 // ============================================================
 // GET ALL RESOURCE REQUESTS
@@ -7,97 +7,94 @@ const pool = require("../config/db");
 
 const getAllResourceRequests = async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT
-                rr.id,
-                rr.incident_id,
-                i.incident_number,
-                i.title AS incident_title,
-                rr.requested_by,
-                u.full_name AS requested_by_name,
-                rr.resource_category,
-                rr.resource_name,
-                rr.quantity_requested,
-                rr.quantity_allocated,
-                rr.unit,
-                rr.priority,
-                rr.status,
-                rr.requested_at,
-                rr.fulfilled_at,
-                rr.notes
-            FROM resource_requests rr
-            LEFT JOIN incidents i
-                ON i.id = rr.incident_id
-            LEFT JOIN users u
-                ON u.id = rr.requested_by
-            ORDER BY rr.requested_at DESC
-        `);
+        const isCitizen = req.user?.role === "CITIZEN";
+
+        const query = isCitizen
+            ? `
+                SELECT
+                    rr.id,
+                    rr.incident_id,
+                    i.incident_number,
+                    i.title AS incident_title,
+                    rr.requested_by,
+                    u.full_name AS requested_by_name,
+                    rr.resource_category,
+                    rr.resource_name,
+                    rr.quantity_requested,
+                    rr.quantity_allocated,
+                    rr.unit,
+                    rr.priority,
+                    rr.status,
+                    rr.requested_at,
+                    rr.fulfilled_at,
+                    rr.notes
+                FROM resource_requests rr
+                LEFT JOIN incidents i
+                    ON i.id = rr.incident_id
+                LEFT JOIN users u
+                    ON u.id = rr.requested_by
+                WHERE rr.requested_by = $1
+                ORDER BY rr.requested_at DESC
+              `
+            : `
+                SELECT
+                    rr.id,
+                    rr.incident_id,
+                    i.incident_number,
+                    i.title AS incident_title,
+                    rr.requested_by,
+                    u.full_name AS requested_by_name,
+                    rr.resource_category,
+                    rr.resource_name,
+                    rr.quantity_requested,
+                    rr.quantity_allocated,
+                    rr.unit,
+                    rr.priority,
+                    rr.status,
+                    rr.requested_at,
+                    rr.fulfilled_at,
+                    rr.notes
+                FROM resource_requests rr
+                LEFT JOIN incidents i
+                    ON i.id = rr.incident_id
+                LEFT JOIN users u
+                    ON u.id = rr.requested_by
+                ORDER BY rr.requested_at DESC
+              `;
+
+        const params = isCitizen ? [req.user.id] : [];
+        const result = await pool.query(query, params);
 
         res.json(result.rows);
 
     } catch (error) {
         console.error(error);
-
         res.status(500).json({
             message: "Server Error"
         });
     }
 };
-
-
-// ============================================================
-// GET RESOURCE REQUEST BY ID
-// ============================================================
 
 const getResourceRequestById = async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT
-                rr.id,
-                rr.incident_id,
-                i.incident_number,
-                i.title AS incident_title,
-                rr.requested_by,
-                u.full_name AS requested_by_name,
-                rr.resource_category,
-                rr.resource_name,
-                rr.quantity_requested,
-                rr.quantity_allocated,
-                rr.unit,
-                rr.priority,
-                rr.status,
-                rr.requested_at,
-                rr.fulfilled_at,
-                rr.notes
-            FROM resource_requests rr
-            LEFT JOIN incidents i
-                ON i.id = rr.incident_id
-            LEFT JOIN users u
-                ON u.id = rr.requested_by
-            WHERE rr.id = $1
-        `, [req.params.id]);
-
+        const { id } = req.params;
+        const result = await pool.query(
+            `SELECT rr.*, i.incident_number, i.title AS incident_title, u.full_name AS requested_by_name
+             FROM resource_requests rr
+             LEFT JOIN incidents i ON i.id = rr.incident_id
+             LEFT JOIN users u ON u.id = rr.requested_by
+             WHERE rr.id = $1`,
+            [id]
+        );
         if (result.rows.length === 0) {
-            return res.status(404).json({
-                message: "Resource request not found"
-            });
+            return res.status(404).json({ message: "Resource request not found" });
         }
-
         res.json(result.rows[0]);
-
     } catch (error) {
         console.error(error);
-
-        res.status(500).json({
-            message: "Server Error"
-        });
+        res.status(500).json({ message: "Server Error" });
     }
 };
-
-
-// ============================================================
-// CREATE RESOURCE REQUEST
-// ============================================================
 
 const createResourceRequest = async (req, res) => {
     try {
@@ -108,35 +105,57 @@ const createResourceRequest = async (req, res) => {
             quantity_requested,
             unit,
             priority,
-            notes
+            notes,
+            latitude,
+            longitude
         } = req.body;
 
         if (
-            !incident_id ||
             !resource_category ||
             !resource_name ||
             quantity_requested === undefined ||
             !unit
         ) {
             return res.status(400).json({
-                message:
-                    "Incident, resource category, resource name, quantity and unit are required."
+                message: "Resource category, resource name, quantity and unit are required."
             });
         }
 
-        const incidentCheck = await pool.query(
-            `
-            SELECT id
-            FROM incidents
-            WHERE id = $1
-            `,
-            [incident_id]
-        );
+        let targetIncidentId = incident_id;
 
-        if (incidentCheck.rows.length === 0) {
-            return res.status(404).json({
-                message: "Incident not found"
-            });
+        // If no incident_id was provided (e.g. from Citizen Portal), link to their active incident or create one
+        if (!targetIncidentId) {
+            const existingIncident = await pool.query(
+                `SELECT id FROM incidents WHERE created_by = $1 AND status != 'RESOLVED' ORDER BY created_at DESC LIMIT 1`,
+                [req.user.id]
+            );
+
+            if (existingIncident.rows.length > 0) {
+                targetIncidentId = existingIncident.rows[0].id;
+            } else {
+                const incNumber = `INC-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
+                const incLat = Number.isFinite(Number(latitude)) ? Number(latitude) : 0;
+                const incLng = Number.isFinite(Number(longitude)) ? Number(longitude) : 0;
+
+                const newIncident = await pool.query(
+                    `INSERT INTO incidents
+                        (incident_number, title, description, category, severity, status, report_count, created_by, location)
+                     VALUES
+                        ($1, $2, $3, $4, $5, 'NEW', 1, $6, ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography)
+                     RETURNING id`,
+                    [
+                        incNumber,
+                        `Citizen Assistance: ${resource_name}`,
+                        notes || `Emergency resource request for ${quantity_requested} ${unit} of ${resource_name}`,
+                        resource_category || "Logistics",
+                        priority || "HIGH",
+                        req.user.id,
+                        incLng,
+                        incLat
+                    ]
+                );
+                targetIncidentId = newIncident.rows[0].id;
+            }
         }
 
         const result = await pool.query(`
@@ -166,7 +185,7 @@ const createResourceRequest = async (req, res) => {
             )
             RETURNING *
         `, [
-            incident_id,
+            targetIncidentId,
             req.user.id,
             resource_category,
             resource_name,
@@ -177,20 +196,17 @@ const createResourceRequest = async (req, res) => {
         ]);
 
         res.status(201).json({
-            message:
-                "Resource request created successfully",
-            request: result.rows[0]
+            message: "Resource request created successfully",
+            resourceRequest: result.rows[0]
         });
 
     } catch (error) {
-        console.error(error);
-
+        console.error("Create resource request error:", error);
         res.status(500).json({
             message: "Server Error"
         });
     }
 };
-
 
 // ============================================================
 // UPDATE RESOURCE REQUEST + RESOURCE INVENTORY

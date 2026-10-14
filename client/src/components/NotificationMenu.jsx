@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useEffect } from "react";
+
+import { useState, useEffect } from "react";
 import { useEmergency } from "../context/EmergencyContext";
 import socket from "../services/socket";
 
@@ -14,30 +14,42 @@ import {
 import NotificationsIcon from "@mui/icons-material/Notifications";
 
 const NotificationMenu = () => {
-
     const [anchorEl, setAnchorEl] = useState(null);
 
-const { notifications, setNotifications } = useEmergency();
+    const { notifications, setNotifications } = useEmergency();
+
     useEffect(() => {
+        
+const handleNewSOS = (data) => {
+    if (!data?.id) return;
 
-    socket.on("newSOS", (data) => {
+    setNotifications((previous) => {
+        const exists = previous.some(
+            (notification) =>
+                String(notification.id) === String(data.id)
+        );
 
-        setNotifications((prev) => [
-    {
-        id: data.id,
-        title: data.category,
-        message: data.message
-    },
-    ...prev
-]);
+        if (exists) return previous;
 
+        return [
+            {
+                id: data.id,
+                title: data.category || "Emergency Alert",
+                message: data.message || "A new SOS has been reported."
+            },
+            ...previous
+        ];
     });
+};
 
-    return () => {
-        socket.off("newSOS");
-    };
 
-}, []);
+        socket.on("newSOS", handleNewSOS);
+
+        return () => {
+            socket.off("newSOS", handleNewSOS);
+        };
+    }, [setNotifications]);
+
     return (
         <>
             <IconButton
@@ -59,35 +71,31 @@ const { notifications, setNotifications } = useEmergency();
             >
                 {notifications.map((notification, index) => (
                     <MenuItem
-    key={index}
-    onClick={() => {
+                        key={notification.id ?? index}
+                        onClick={() => {
+                            setAnchorEl(null);
 
-        setAnchorEl(null);
+                            const card = document.getElementById(
+                                `sos-${notification.id}`
+                            );
 
-        const card = document.getElementById(
-            `sos-${notification.id}`
-        );
+                            if (card) {
+                                card.scrollIntoView({
+                                    behavior: "smooth",
+                                    block: "center"
+                                });
+                            }
+                        }}
+                    >
+                        <div>
+                            <Typography fontWeight="bold">
+                                {notification.title}
+                            </Typography>
 
-        if (card) {
-            card.scrollIntoView({
-                behavior: "smooth",
-                block: "center"
-            });
-        }
-
-    }}
->
-                        <Typography variant="body2">
-                            <>
-    <Typography fontWeight="bold">
-        {notification.title}
-    </Typography>
-
-    <Typography variant="body2">
-        {notification.message}
-    </Typography>
-</>
-                        </Typography>
+                            <Typography variant="body2">
+                                {notification.message}
+                            </Typography>
+                        </div>
                     </MenuItem>
                 ))}
             </Menu>

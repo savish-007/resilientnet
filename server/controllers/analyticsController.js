@@ -1,90 +1,76 @@
 const pool = require("../config/db");
 
 const getDashboardAnalytics = async (req, res) => {
-
     try {
-
         const [
-
             totalSOS,
             activeSOS,
             resolvedSOS,
-
             highPriority,
-
             resourcesAvailable,
             resourcesBusy,
-
             volunteersAvailable,
             volunteersBusy,
-
             categoryStats,
-
             severityStats,
-
             dailyTrend,
-
             resourceStats,
-
             volunteerStats,
-
             aiStats
-
         ] = await Promise.all([
-
             // Total SOS
             pool.query(`
                 SELECT COUNT(*) AS count
-                FROM sos_alerts
+                FROM sos_reports
             `),
 
             // Active SOS
             pool.query(`
                 SELECT COUNT(*) AS count
-                FROM sos_alerts
-                WHERE status<> 'RESOLVED'
+                FROM sos_reports
+                WHERE status <> 'RESOLVED'
             `),
 
             // Resolved SOS
             pool.query(`
                 SELECT COUNT(*) AS count
-                FROM sos_alerts
-                WHERE status='RESOLVED'
+                FROM sos_reports
+                WHERE status = 'RESOLVED'
             `),
 
             // High Priority
             pool.query(`
                 SELECT COUNT(*) AS count
                 FROM ai_analysis
-                WHERE priority_score>=70
+                WHERE priority_score >= 70
             `),
 
             // Resources Available
             pool.query(`
                 SELECT COUNT(*) AS count
                 FROM resources
-                WHERE status='AVAILABLE'
+                WHERE status = 'AVAILABLE'
             `),
 
             // Resources Busy
             pool.query(`
                 SELECT COUNT(*) AS count
                 FROM resources
-                WHERE status='ASSIGNED'
+                WHERE status = 'BUSY'
             `),
 
             // Volunteers Available
             pool.query(`
                 SELECT COUNT(*) AS count
                 FROM volunteers
-                WHERE availability=true
+                WHERE availability = 'AVAILABLE'
             `),
 
             // Volunteers Busy
             pool.query(`
                 SELECT COUNT(*) AS count
                 FROM volunteers
-                WHERE availability=false
+                WHERE availability = 'UNAVAILABLE'
             `),
 
             // Category Statistics
@@ -92,7 +78,7 @@ const getDashboardAnalytics = async (req, res) => {
                 SELECT
                     category,
                     COUNT(*) AS count
-                FROM sos_alerts
+                FROM sos_reports
                 GROUP BY category
                 ORDER BY count DESC
             `),
@@ -102,7 +88,7 @@ const getDashboardAnalytics = async (req, res) => {
                 SELECT
                     severity,
                     COUNT(*) AS count
-                FROM sos_alerts
+                FROM sos_reports
                 GROUP BY severity
                 ORDER BY count DESC
             `),
@@ -110,123 +96,67 @@ const getDashboardAnalytics = async (req, res) => {
             // Daily Trend
             pool.query(`
                 SELECT
-
                     DATE(created_at) AS date,
-
                     COUNT(*) AS count
-
-                FROM sos_alerts
-
+                FROM sos_reports
                 GROUP BY DATE(created_at)
-
                 ORDER BY DATE(created_at)
             `),
 
             // Resource Status
             pool.query(`
                 SELECT
-
                     status,
-
                     COUNT(*) AS count
-
                 FROM resources
-
                 GROUP BY status
             `),
 
             // Volunteer Availability
             pool.query(`
                 SELECT
-
                     availability,
-
                     COUNT(*) AS count
-
                 FROM volunteers
-
                 GROUP BY availability
             `),
 
             // AI Statistics
             pool.query(`
                 SELECT
-
-                    ROUND(AVG(priority_score),2) AS average_priority,
-
+                    ROUND(AVG(priority_score), 2) AS average_priority,
                     MAX(priority_score) AS highest_priority,
-
                     COUNT(*) AS total_analysis
-
                 FROM ai_analysis
             `)
-
         ]);
 
         res.json({
-
             summary: {
-
-                totalSOS:
-                    Number(totalSOS.rows[0].count),
-
-                activeSOS:
-                    Number(activeSOS.rows[0].count),
-
-                resolvedSOS:
-                    Number(resolvedSOS.rows[0].count),
-
-                highPriority:
-                    Number(highPriority.rows[0].count),
-
-                resourcesAvailable:
-                    Number(resourcesAvailable.rows[0].count),
-
-                resourcesBusy:
-                    Number(resourcesBusy.rows[0].count),
-
-                volunteersAvailable:
-                    Number(volunteersAvailable.rows[0].count),
-
-                volunteersBusy:
-                    Number(volunteersBusy.rows[0].count)
-
+                totalSOS: Number(totalSOS.rows[0].count),
+                activeSOS: Number(activeSOS.rows[0].count),
+                resolvedSOS: Number(resolvedSOS.rows[0].count),
+                highPriority: Number(highPriority.rows[0].count),
+                resourcesAvailable: Number(resourcesAvailable.rows[0].count),
+                resourcesBusy: Number(resourcesBusy.rows[0].count),
+                volunteersAvailable: Number(volunteersAvailable.rows[0].count),
+                volunteersBusy: Number(volunteersBusy.rows[0].count)
             },
-
-            categoryStats:
-                categoryStats.rows,
-
-            severityStats:
-                severityStats.rows,
-
-            dailyTrend:
-                dailyTrend.rows,
-
-            resourceStats:
-                resourceStats.rows,
-
-            volunteerStats:
-                volunteerStats.rows,
-
-            aiStats:
-                aiStats.rows[0]
-
+            categoryStats: categoryStats.rows,
+            severityStats: severityStats.rows,
+            dailyTrend: dailyTrend.rows,
+            resourceStats: resourceStats.rows,
+            volunteerStats: volunteerStats.rows,
+            aiStats: aiStats.rows[0]
         });
-
     } catch (error) {
-
         console.error(error);
-
         res.status(500).json({
             message: "Server Error"
         });
-
     }
-
 };
 
 module.exports = {
-
     getDashboardAnalytics
-
 };

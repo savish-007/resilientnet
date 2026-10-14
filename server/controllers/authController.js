@@ -13,7 +13,9 @@ const register = async (req, res) => {
         email,
         password,
         phone,
-        organization
+        organization,
+        account_type, // "CITIZEN" or "VOLUNTEER"
+        skills
     } = req.body || {};
 
     // Validate required fields.
@@ -58,13 +60,14 @@ const register = async (req, res) => {
         });
     }
 
-    const role = "VOLUNTEER";
+    // Determine account role based on registration choice
+    const isVolunteerRequest = account_type === "VOLUNTEER";
+    const role = isVolunteerRequest ? "PENDING_VOLUNTEER" : "CITIZEN";
+
     let client;
 
     try {
-        // Acquire the database connection inside the try block.
         client = await pool.connect();
-
         await client.query("BEGIN");
 
         const existingUser = await client.query(
@@ -74,7 +77,6 @@ const register = async (req, res) => {
 
         if (existingUser.rows.length > 0) {
             await client.query("ROLLBACK");
-
             return res.status(400).json({
                 message: "Email already registered"
             });
@@ -86,7 +88,7 @@ const register = async (req, res) => {
             `INSERT INTO users
              (full_name, email, password_hash, phone, role)
              VALUES ($1, $2, $3, $4, $5)
-             RETURNING id`,
+             RETURNING id, role`,
             [
                 normalizedName,
                 normalizedEmail,
@@ -98,37 +100,37 @@ const register = async (req, res) => {
 
         const userId = userResult.rows[0].id;
 
-        await client.query(
-            `INSERT INTO volunteers (user_id)
-             VALUES ($1)`,
-            [userId]
-        );
+        // If requesting to be a volunteer, create pending volunteer profile
+        if (isVolunteerRequest) {
+            await client.query(
+                `INSERT INTO volunteers (user_id, availability, skills)
+                 VALUES ($1, 'PENDING', $2)`,
+                [userId, typeof skills === "string" && skills.trim() ? skills.trim() : "General Support"]
+            );
+        }
 
         await client.query("COMMIT");
 
         return res.status(201).json({
-            message: "Volunteer Registered Successfully"
+            message: isVolunteerRequest
+                ? "Volunteer application submitted. An administrator will review and assign your role."
+                : "Citizen account registered successfully. You can now log in to request emergency assistance.",
+            role
         });
 
     } catch (error) {
-        // Roll back only if a transaction was started.
         if (client) {
             try {
                 await client.query("ROLLBACK");
             } catch (rollbackError) {
-                console.error(
-                    "Registration rollback failed:",
-                    rollbackError.message
-                );
+                console.error("Registration rollback failed:", rollbackError.message);
             }
         }
 
-        console.error("Registration error:", error.message);
-
+        console.error("Registration error:", error);
         return res.status(500).json({
             message: "Server Error"
         });
-
     } finally {
         if (client) {
             client.release();

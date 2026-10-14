@@ -1,3 +1,4 @@
+
 import React from "react";
 
 const DashboardLayout = ({ children }) => {
@@ -6,7 +7,11 @@ const DashboardLayout = ({ children }) => {
             style={{
                 display: "flex",
                 minHeight: "100vh",
-                background: "#f5f7fa"
+                width: "100%",
+                background: "#F4F7FB",
+                color: "#172B4D",
+                fontFamily: "'Inter', 'Segoe UI', sans-serif",
+                overflowX: "hidden"
             }}
         >
             {children}

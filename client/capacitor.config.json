@@ -1,0 +1,9 @@
+{
+  "appId": "com.resilientnet.app",
+  "appName": "ResilientNet",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true,
+    "androidScheme": "https"
+  }
+}
