@@ -1,38 +1,65 @@
 // Dynamic API Configuration for ResilientNet
-// Works both in desktop browser (localhost:5000) and on mobile Android APK (LAN IP: 192.168.31.72:5000)
+// Works both in desktop browser and native Android mobile APK
 
-const detectServerUrl = () => {
-    // 1. Check if user configured a custom server in localStorage
-    const saved = localStorage.getItem("custom_server_url");
-    if (saved && saved.trim()) {
-        return saved.trim().replace(/\/+$/, "");
+export const HOST_LAN_IP = "192.168.31.72";
+export const BACKEND_PORT = "5000";
+export const DEFAULT_SERVER_URL = `http://${HOST_LAN_IP}:${BACKEND_PORT}`;
+
+export const getSavedServerUrl = () => {
+    try {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("custom_server_url");
+            if (saved && saved.trim()) {
+                return saved.trim().replace(/\/+$/, "");
+            }
+        }
+    } catch {
+        // ignore
+    }
+    return null;
+};
+
+export const setCustomServerUrl = (url) => {
+    try {
+        if (typeof window !== "undefined") {
+            if (!url || !url.trim()) {
+                localStorage.removeItem("custom_server_url");
+            } else {
+                localStorage.setItem("custom_server_url", url.trim().replace(/\/+$/, ""));
+            }
+        }
+    } catch {
+        // ignore
+    }
+};
+
+export const detectServerUrl = () => {
+    // 1. User overridden custom URL from localStorage
+    const custom = getSavedServerUrl();
+    if (custom) return custom;
+
+    // 2. Vite environment variable (if explicitly configured)
+    if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim()) {
+        return import.meta.env.VITE_API_URL.trim().replace(/\/+$/, "");
     }
 
-    // 2. Environment variable
-    if (import.meta.env.VITE_API_URL) {
-        return import.meta.env.VITE_API_URL.replace(/\/+$/, "");
-    }
+    // 3. Desktop browser running on Vite dev server (port 5173 / 5174 / 4175)
+    if (typeof window !== "undefined" && window.location) {
+        const port = window.location.port;
+        const host = window.location.hostname;
 
-    // 3. Mobile environment (Capacitor native app)
-    if (typeof window !== "undefined") {
-        const isCapacitor =
-            window.Capacitor?.isNativePlatform?.() ||
-            window.location.protocol === "capacitor:" ||
-            window.location.protocol === "file:";
-
-        if (isCapacitor) {
-            // Android mobile connects to the host computer's Wi-Fi IP
-            return "http://192.168.31.72:5000";
+        if ((host === "localhost" || host === "127.0.0.1") && (port === "5173" || port === "5174" || port === "4175")) {
+            return `http://localhost:${BACKEND_PORT}`;
         }
 
-        // 4. Browser on non-localhost device (e.g. tablet on LAN)
-        if (window.location.hostname && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-            return `http://${window.location.hostname}:5000`;
+        // Browser on LAN device with a port (e.g. tablet opening http://192.168.31.72:5173)
+        if (host && host !== "localhost" && host !== "127.0.0.1") {
+            return `http://${host}:${BACKEND_PORT}`;
         }
     }
 
-    // 5. Default desktop browser
-    return "http://localhost:5000";
+    // 4. Default for Android APK & Mobile -> Always connect to Host Computer on Wi-Fi
+    return DEFAULT_SERVER_URL;
 };
 
 export const API_SERVER_URL = detectServerUrl();

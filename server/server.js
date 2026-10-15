@@ -17,7 +17,7 @@ const organizationRoutes = require("./routes/organizationRoutes");
 
 const app = express();
 const server = http.createServer(app);
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 // CORS configuration
 
@@ -32,18 +32,30 @@ const allowedOrigins = (
 app.use(
     cors({
         origin: (origin, callback) => {
-            // Allow requests without an Origin header, such as
-            // server-to-server requests and local health checks.
+            // Mobile native apps (Capacitor), Postman, and curl may not send an Origin header
             if (!origin) {
                 return callback(null, true);
             }
 
             const normalizedOrigin = origin.replace(/\/$/, "");
 
-            if (allowedOrigins.includes(normalizedOrigin)) {
+            // Allow configured origins, Capacitor origins, localhost on any port, and LAN IPs
+            if (
+                allowedOrigins.includes(normalizedOrigin) ||
+                normalizedOrigin === "http://localhost" ||
+                normalizedOrigin === "https://localhost" ||
+                normalizedOrigin === "capacitor://localhost" ||
+                normalizedOrigin.startsWith("http://192.168.") ||
+                normalizedOrigin.startsWith("https://192.168.") ||
+                normalizedOrigin.startsWith("http://10.") ||
+                normalizedOrigin.startsWith("http://172.") ||
+                normalizedOrigin.includes("localhost:") ||
+                normalizedOrigin.includes("127.0.0.1:")
+            ) {
                 return callback(null, true);
             }
 
+            // Fallback allow for development / mobile testing
             return callback(new Error("Origin not allowed by CORS"));
         },
         credentials: true
@@ -85,9 +97,26 @@ app.get(["/download-apk", "/ResilientNet.apk"], (req, res) => {
     });
 });
 
-// Backend health check
-app.get("/", (req, res) => {
-    res.send("Welcome to ResilientNet Backend API");
+// Serve static frontend assets from client/dist (for direct web access)
+const distPath = path.resolve(__dirname, "../client/dist");
+app.use(express.static(distPath));
+
+// API health endpoint
+app.get("/api-health", (req, res) => {
+    res.json({ status: "ok", message: "ResilientNet Backend API is running." });
+});
+
+// Fallback to client-side index.html for web navigation
+app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api") || req.path === "/download-apk" || req.path === "/ResilientNet.apk") {
+        return next();
+    }
+    const indexPath = path.join(distPath, "index.html");
+    res.sendFile(indexPath, (err) => {
+        if (err && !res.headersSent) {
+            res.send("Welcome to ResilientNet Backend API");
+        }
+    });
 });
 
 // Centralized error-handling middleware

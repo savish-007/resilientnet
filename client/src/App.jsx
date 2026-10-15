@@ -9,6 +9,7 @@ import AIDashboard from "./pages/AIDashboard";
 import ResetPassword from "./pages/ResetPassword";
 import CitizenDashboard from "./pages/CitizenDashboard";
 import SOSAlertsDashboard from "./pages/SOSAlertsDashboard";
+import MeshDashboard from "./pages/MeshDashboard";
 
 import { Box, Card, CardContent, Typography, Button, Chip, Stack } from "@mui/material";
 import HourglassEmptyRoundedIcon from "@mui/icons-material/HourglassEmptyRounded";
@@ -147,6 +148,10 @@ function App() {
 
     if (path === "/sos") {
         return <SOSAlertsDashboard />;
+    }
+
+    if (path === "/mesh") {
+        return <MeshDashboard />;
     }
 
     if (path === "/resources") {

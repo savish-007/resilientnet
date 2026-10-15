@@ -1,4 +1,5 @@
 
+import { useState, useEffect } from "react";
 import {
     AppBar,
     Toolbar,
@@ -6,6 +7,7 @@ import {
     Avatar,
     Box,
     Button,
+    Chip,
     Stack,
     Divider,
     Tooltip
@@ -14,10 +16,21 @@ import {
 import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
+import BluetoothRoundedIcon from "@mui/icons-material/BluetoothRounded";
 
 import NotificationMenu from "./NotificationMenu";
+import meshService from "../services/meshService";
 
 const Navbar = () => {
+    const [meshStats, setMeshStats] = useState(() => meshService.getStats());
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setMeshStats(meshService.getStats());
+        }, 4000);
+        return () => clearInterval(interval);
+    }, []);
+
     const handleLogout = () => {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
@@ -101,6 +114,51 @@ const Navbar = () => {
                         </Typography>
                     </Box>
                 </Box>
+
+                {/* Bluetooth Mesh Status Chip */}
+                <Tooltip title={`Node ID: ${meshStats.nodeId} | Outbox: ${meshStats.outboxCount} | Relayed: ${meshStats.relayedCount} | Click to open Mesh Terminal`}>
+                    <Chip
+                        icon={<BluetoothRoundedIcon sx={{ fontSize: "16px !important", color: "#0284C7 !important" }} />}
+                        label={
+                            <Box component="span" sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
+                                <span style={{ fontWeight: 800 }}>BLE MESH</span>
+                                {meshStats.outboxCount + meshStats.relayedCount > 0 && (
+                                    <span style={{
+                                        background: "#EF4444",
+                                        color: "#fff",
+                                        borderRadius: "10px",
+                                        padding: "1px 6px",
+                                        fontSize: "10px",
+                                        fontWeight: 900
+                                    }}>
+                                        {meshStats.outboxCount + meshStats.relayedCount}
+                                    </span>
+                                )}
+                            </Box>
+                        }
+                        onClick={() => window.location.href = "/mesh"}
+                        size="small"
+                        clickable
+                        sx={{
+                            bgcolor: "rgba(2, 132, 199, 0.08)",
+                            border: "1px solid rgba(2, 132, 199, 0.25)",
+                            color: "#0369A1",
+                            fontWeight: 750,
+                            fontSize: "0.75rem",
+                            height: 38,
+                            px: 1,
+                            borderRadius: "10px",
+                            display: { xs: "none", sm: "inline-flex" },
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                            "&:hover": {
+                                bgcolor: "rgba(2, 132, 199, 0.16)",
+                                borderColor: "#0284C7",
+                                transform: "translateY(-1px)"
+                            }
+                        }}
+                    />
+                </Tooltip>
 
                 {/* Notifications */}
                 <Tooltip title="Notifications">

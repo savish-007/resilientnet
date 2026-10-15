@@ -19,12 +19,14 @@ import PsychologyRoundedIcon from "@mui/icons-material/PsychologyRounded";
 import AssessmentRoundedIcon from "@mui/icons-material/AssessmentRounded";
 import AssignmentRoundedIcon from "@mui/icons-material/AssignmentRounded";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
+import BluetoothRoundedIcon from "@mui/icons-material/BluetoothRounded";
 
 const drawerWidth = 250;
 
 const menuItems = [
     { label: "Dashboard", path: "/", icon: <DashboardRoundedIcon /> },
     { label: "SOS Alerts", path: "/sos", icon: <WarningAmberRoundedIcon /> },
+    { label: "Bluetooth Mesh", path: "/mesh", icon: <BluetoothRoundedIcon /> },
     { label: "Resources", path: "/resources", icon: <Inventory2RoundedIcon /> },
     { label: "Volunteers", path: "/volunteers", icon: <GroupsRoundedIcon /> },
     { label: "AI Analysis", path: "/ai", icon: <PsychologyRoundedIcon /> },

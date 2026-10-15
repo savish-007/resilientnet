@@ -26,8 +26,15 @@ import MyLocationRoundedIcon from "@mui/icons-material/MyLocationRounded";
 import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import BluetoothRoundedIcon from "@mui/icons-material/BluetoothRounded";
+import HubRoundedIcon from "@mui/icons-material/HubRounded";
+import WifiOffRoundedIcon from "@mui/icons-material/WifiOffRounded";
+import WifiRoundedIcon from "@mui/icons-material/WifiRounded";
+import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 
 import api from "../api/api";
+import meshService from "../services/meshService";
 
 const CitizenDashboard = () => {
     let user = null;
@@ -63,10 +70,29 @@ const CitizenDashboard = () => {
     const [myResourceList, setMyResourceList] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
 
-    // Auto-detect GPS on initial load
+    // Bluetooth Mesh State
+    const [meshStats, setMeshStats] = useState(meshService.getStats());
+    const [meshOutbox, setMeshOutbox] = useState(meshService.getOutbox());
+    const [meshRelayed, setMeshRelayed] = useState(meshService.getRelayedPackets());
+
+    // Auto-detect GPS and subscribe to mesh
     useEffect(() => {
         detectLocation();
         fetchMyHistory();
+
+        const unsub1 = meshService.on("outbox_updated", (list) => {
+            setMeshOutbox([...list]);
+            setMeshStats(meshService.getStats());
+        });
+        const unsub2 = meshService.on("relayed_updated", (list) => {
+            setMeshRelayed([...list]);
+            setMeshStats(meshService.getStats());
+        });
+
+        return () => {
+            unsub1();
+            unsub2();
+        };
     }, []);
 
     const detectLocation = () => {
@@ -137,6 +163,28 @@ const CitizenDashboard = () => {
         setSosLoading(true);
         setSosFeedback(null);
 
+        // 1. If device is explicitly offline, immediately package into Bluetooth Mesh packet
+        if (!navigator.onLine) {
+            const packet = meshService.createOfflineSOS({
+                sender_name: user?.full_name || "Emergency Citizen",
+                sender_phone: user?.phone || "",
+                message: sosMessage.trim(),
+                category: sosCategory,
+                severity: sosSeverity,
+                latitude: sosLocation.latitude,
+                longitude: sosLocation.longitude
+            });
+
+            setSosFeedback({
+                type: "info",
+                text: `No Internet Detected: Activated Bluetooth Mesh Mode! SOS stored safely (ID: ${packet.mesh_message_id.slice(0, 16)}...) and actively broadcasting to nearby mobile devices via Bluetooth.`
+            });
+            setSosMessage("");
+            setSosLoading(false);
+            return;
+        }
+
+        // 2. If online, attempt direct transmission; on failure, automatically save to mesh queue
         try {
             await api.post("/sos", {
                 message: sosMessage.trim(),
@@ -153,10 +201,22 @@ const CitizenDashboard = () => {
             setSosMessage("");
             fetchMyHistory();
         } catch (err) {
-            setSosFeedback({
-                type: "error",
-                text: err.response?.data?.message || "Failed to transmit SOS. Please retry."
+            // Server down or network dropped -> Store in Bluetooth Mesh!
+            const packet = meshService.createOfflineSOS({
+                sender_name: user?.full_name || "Emergency Citizen",
+                sender_phone: user?.phone || "",
+                message: sosMessage.trim(),
+                category: sosCategory,
+                severity: sosSeverity,
+                latitude: sosLocation.latitude,
+                longitude: sosLocation.longitude
             });
+
+            setSosFeedback({
+                type: "info",
+                text: `Server unreachable. Automatically switched to Bluetooth Mesh Mode! Your emergency alert is stored locally and broadcasting via Bluetooth to passing devices.`
+            });
+            setSosMessage("");
         } finally {
             setSosLoading(false);
         }
@@ -288,7 +348,9 @@ const CitizenDashboard = () => {
                     <Tabs
                         value={currentTab}
                         onChange={(e, val) => setCurrentTab(val)}
-                        variant="fullWidth"
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        allowScrollButtonsMobile
                         sx={{
                             "& .MuiTabs-indicator": {
                                 height: "100%",
@@ -298,22 +360,28 @@ const CitizenDashboard = () => {
                                         ? "#DC2626"
                                         : currentTab === 1
                                         ? "#0284C7"
+                                        : currentTab === 2
+                                        ? "#2563EB"
                                         : "#059669",
                                 zIndex: 0
                             },
                             "& .MuiTab-root": {
                                 zIndex: 1,
                                 textTransform: "none",
-                                fontWeight: 800,
-                                fontSize: "0.95rem",
-                                color: "#64748B",
-                                minHeight: 46,
-                                "&.Mui-selected": { color: "#FFFFFF" }
+                                fontWeight: 850,
+                                fontSize: { xs: "0.85rem", sm: "0.95rem" },
+                                color: "#1E293B",
+                                minHeight: 48,
+                                minWidth: { xs: 130, sm: 160 },
+                                px: { xs: 1.5, sm: 2.5 },
+                                whiteSpace: "nowrap",
+                                "&.Mui-selected": { color: "#FFFFFF !important" }
                             }
                         }}
                     >
                         <Tab label="🚨 Emergency SOS" />
                         <Tab label="📦 Request Supplies" />
+                        <Tab label={`📡 Bluetooth Mesh (${meshOutbox.length + meshRelayed.length})`} />
                         <Tab label={`📋 My Status (${mySOSList.length + myResourceList.length})`} />
                     </Tabs>
                 </Paper>
@@ -354,6 +422,80 @@ const CitizenDashboard = () => {
                                     {sosFeedback.text}
                                 </Alert>
                             )}
+
+                            {/* Bluetooth Mesh Relay Banner */}
+                            <Box
+                                sx={{
+                                    mb: 2.5,
+                                    p: 2,
+                                    borderRadius: "14px",
+                                    bgcolor: !navigator.onLine ? "#FFFBEB" : "#F0F9FF",
+                                    border: `1.5px solid ${!navigator.onLine ? "#F59E0B" : "#0284C7"}`,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    flexWrap: "wrap",
+                                    gap: 1.5
+                                }}
+                            >
+                                <Stack direction="row" spacing={1.5} alignItems="center">
+                                    <Box
+                                        sx={{
+                                            width: 42,
+                                            height: 42,
+                                            borderRadius: "12px",
+                                            bgcolor: !navigator.onLine ? "#D97706" : "#0284C7",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            boxShadow: !navigator.onLine ? "0 4px 12px rgba(217, 119, 6, 0.35)" : "0 4px 12px rgba(2, 132, 199, 0.35)",
+                                            flexShrink: 0
+                                        }}
+                                    >
+                                        <BluetoothRoundedIcon sx={{ color: "#FFFFFF", fontSize: 24 }} />
+                                    </Box>
+                                    <Box>
+                                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                            <Typography variant="subtitle2" fontWeight={850} color="#0F172A">
+                                                {navigator.onLine ? "Offline-Ready Bluetooth Mesh: ACTIVE" : "Offline Bluetooth Mesh Active (No Internet Required)"}
+                                            </Typography>
+                                            <Chip
+                                                label={navigator.onLine ? "ONLINE + MESH" : "OFFLINE MESH"}
+                                                size="small"
+                                                sx={{
+                                                    bgcolor: navigator.onLine ? "#DCFCE7" : "#FEF3C7",
+                                                    color: navigator.onLine ? "#15803D" : "#78350F",
+                                                    fontWeight: 850,
+                                                    fontSize: "0.72rem",
+                                                    border: `1px solid ${navigator.onLine ? "#86EFAC" : "#FDE68A"}`
+                                                }}
+                                            />
+                                        </Stack>
+                                        <Typography variant="caption" sx={{ color: "#1E293B !important", fontWeight: 700, mt: 0.3, display: "block" }}>
+                                            Node: <strong style={{ color: "#0284C7", fontWeight: 850 }}>{meshStats.nodeId}</strong> • If internet is down, your SOS automatically hops across passing phones until reaching rescue teams.
+                                        </Typography>
+                                    </Box>
+                                </Stack>
+                                <Button
+                                    size="small"
+                                    variant="contained"
+                                    onClick={() => setCurrentTab(2)}
+                                    sx={{
+                                        borderRadius: "10px",
+                                        textTransform: "none",
+                                        fontWeight: 850,
+                                        fontSize: "0.8rem",
+                                        color: "#FFFFFF",
+                                        bgcolor: !navigator.onLine ? "#D97706" : "#0284C7",
+                                        "&:hover": {
+                                            bgcolor: !navigator.onLine ? "#B45309" : "#0369A1"
+                                        },
+                                        boxShadow: "0 2px 8px rgba(0,0,0,0.12)"
+                                    }}
+                                >
+                                    Open Bluetooth Mesh →
+                                </Button>
+                            </Box>
 
                             <Box component="form" onSubmit={handleSOSSubmit}>
                                 <Stack spacing={2.5}>
@@ -673,8 +815,163 @@ const CitizenDashboard = () => {
                     </Card>
                 )}
 
-                {/* 3. MY STATUS TRACKER */}
+                {/* 2. BLUETOOTH MESH RADAR & RELAY TRACKER */}
                 {currentTab === 2 && (
+                    <Stack spacing={3}>
+                        <Paper
+                            elevation={0}
+                            sx={{
+                                p: { xs: 2, sm: 3 },
+                                borderRadius: "20px",
+                                bgcolor: "#FFFFFF",
+                                border: "1.5px solid #CBD5E1",
+                                boxShadow: "0 10px 30px rgba(0,0,0,0.06)"
+                            }}
+                        >
+                            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={2} sx={{ mb: 2.5 }}>
+                                <Stack direction="row" spacing={1.5} alignItems="center">
+                                    <Box sx={{ width: 44, height: 44, borderRadius: "12px", bgcolor: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                        <BluetoothRoundedIcon sx={{ color: "#FFFFFF", fontSize: 26 }} />
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="h6" fontWeight={850} color="#0F172A">
+                                            Bluetooth Offline Mesh Relay
+                                        </Typography>
+                                        <Typography variant="body2" color="#1E293B" fontWeight={650}>
+                                            Node ID: <strong style={{ color: "#0284C7", fontWeight: 850 }}>{meshStats.nodeId}</strong> • When offline, messages hop from phone to phone
+                                        </Typography>
+                                    </Box>
+                                </Stack>
+                                <Stack direction="row" spacing={1} flexWrap="wrap">
+                                    <Button
+                                        size="small"
+                                        variant="contained"
+                                        onClick={() => {
+                                            meshService.simulatePassingMobilePeer();
+                                            setMeshOutbox(meshService.getOutbox());
+                                            setMeshRelayed(meshService.getRelayedPackets());
+                                        }}
+                                        startIcon={<PlayArrowRoundedIcon />}
+                                        sx={{ borderRadius: "10px", bgcolor: "#D97706", color: "#FFFFFF", textTransform: "none", fontWeight: 800, "&:hover": { bgcolor: "#B45309" } }}
+                                    >
+                                        Simulate Passing Phone Hop
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        variant="contained"
+                                        onClick={() => meshService.flushMeshQueueToServer()}
+                                        startIcon={<RefreshRoundedIcon />}
+                                        sx={{ borderRadius: "10px", bgcolor: "#0284C7", color: "#FFFFFF", textTransform: "none", fontWeight: 800, "&:hover": { bgcolor: "#0369A1" } }}
+                                    >
+                                        Sync Gateway
+                                    </Button>
+                                </Stack>
+                            </Stack>
+
+                            <Grid container spacing={2} sx={{ mb: 3 }}>
+                                <Grid size={{ xs: 12, sm: 4 }}>
+                                    <Box sx={{ p: 2, borderRadius: "14px", bgcolor: "#FEF2F2", border: "1.5px solid #FECACA" }}>
+                                        <Typography variant="caption" color="#991B1B" fontWeight={850}>MY LOCAL OUTBOX</Typography>
+                                        <Typography variant="h5" fontWeight={900} color="#7F1D1D" sx={{ my: 0.5 }}>{meshOutbox.length}</Typography>
+                                        <Typography variant="body2" color="#991B1B" fontWeight={700}>SOS packets stored on this device</Typography>
+                                    </Box>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 4 }}>
+                                    <Box sx={{ p: 2, borderRadius: "14px", bgcolor: "#F0F9FF", border: "1.5px solid #BAE6FD" }}>
+                                        <Typography variant="caption" color="#0369A1" fontWeight={850}>RELAY CARRIER QUEUE</Typography>
+                                        <Typography variant="h5" fontWeight={900} color="#0C4A6E" sx={{ my: 0.5 }}>{meshRelayed.length}</Typography>
+                                        <Typography variant="body2" color="#0369A1" fontWeight={700}>Carried packets for other citizens</Typography>
+                                    </Box>
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 4 }}>
+                                    <Box sx={{ p: 2, borderRadius: "14px", bgcolor: navigator.onLine ? "#F0FDF4" : "#FFFBEB", border: `1.5px solid ${navigator.onLine ? "#BBF7D0" : "#FDE68A"}` }}>
+                                        <Typography variant="caption" color={navigator.onLine ? "#166534" : "#92400E"} fontWeight={850}>GATEWAY UPLINK</Typography>
+                                        <Typography variant="h5" fontWeight={900} color={navigator.onLine ? "#14532D" : "#78350F"} sx={{ my: 0.5 }}>
+                                            {navigator.onLine ? "Online (Uplink)" : "Offline (Relaying)"}
+                                        </Typography>
+                                        <Typography variant="body2" color={navigator.onLine ? "#166534" : "#92400E"} fontWeight={700}>
+                                            {navigator.onLine ? "Auto-syncs packets to HQ" : "Broadcasting via BLE"}
+                                        </Typography>
+                                    </Box>
+                                </Grid>
+                            </Grid>
+
+                            {/* Packet List */}
+                            <Typography variant="subtitle2" fontWeight={850} color="#0F172A" sx={{ mb: 1.5 }}>
+                                Active Emergency Mesh Packets ({meshOutbox.length + meshRelayed.length})
+                            </Typography>
+
+                            {meshOutbox.length === 0 && meshRelayed.length === 0 ? (
+                                <Box sx={{ py: 4, px: 2, textAlign: "center", bgcolor: "#F8FAFC", borderRadius: "14px", border: "2px dashed #94A3B8" }}>
+                                    <HubRoundedIcon sx={{ fontSize: 44, color: "#475569", mb: 1 }} />
+                                    <Typography variant="subtitle1" color="#0F172A" fontWeight={800}>Mesh Buffer is Clear</Typography>
+                                    <Typography variant="body2" color="#334155" fontWeight={650} sx={{ mt: 0.5 }}>
+                                        When you send an SOS without internet, it will safely store here and actively hop across passing mobile devices.
+                                    </Typography>
+                                </Box>
+                            ) : (
+                                <Stack spacing={1.5}>
+                                    {[...meshOutbox, ...meshRelayed].map((pkt) => (
+                                        <Paper
+                                            key={pkt.mesh_message_id}
+                                            sx={{
+                                                p: 2,
+                                                borderRadius: "14px",
+                                                bgcolor: "#F8FAFC",
+                                                border: "1.5px solid #CBD5E1",
+                                                display: "flex",
+                                                flexDirection: { xs: "column", sm: "row" },
+                                                justifyContent: "space-between",
+                                                alignItems: { xs: "flex-start", sm: "center" },
+                                                gap: 1.5
+                                            }}
+                                        >
+                                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }} flexWrap="wrap">
+                                                    <Chip
+                                                        label={pkt.origin_node === meshStats.nodeId ? "MY SOS" : "CARRIED RELAY"}
+                                                        size="small"
+                                                        sx={{
+                                                            bgcolor: pkt.origin_node === meshStats.nodeId ? "#FEE2E2" : "#E0F2FE",
+                                                            color: pkt.origin_node === meshStats.nodeId ? "#B91C1C" : "#0369A1",
+                                                            fontWeight: 850,
+                                                            fontSize: "0.72rem"
+                                                        }}
+                                                    />
+                                                    <Chip
+                                                        label={`${pkt.hops || 0} HOPS`}
+                                                        size="small"
+                                                        sx={{ bgcolor: "#E2E8F0", color: "#1E293B", fontWeight: 800, fontSize: "0.72rem" }}
+                                                    />
+                                                    <Chip
+                                                        label={pkt.status === "DELIVERED_TO_RESCUE_HQ" ? "DELIVERED TO HQ" : "IN TRANSIT / BROADCASTING"}
+                                                        size="small"
+                                                        icon={pkt.status === "DELIVERED_TO_RESCUE_HQ" ? <CheckCircleRoundedIcon sx={{ fontSize: "16px !important", color: "#15803D !important" }} /> : <BluetoothRoundedIcon sx={{ fontSize: "16px !important", color: "#B45309 !important" }} />}
+                                                        sx={{
+                                                            bgcolor: pkt.status === "DELIVERED_TO_RESCUE_HQ" ? "#DCFCE7" : "#FEF3C7",
+                                                            color: pkt.status === "DELIVERED_TO_RESCUE_HQ" ? "#14532D" : "#78350F",
+                                                            fontWeight: 850,
+                                                            fontSize: "0.72rem"
+                                                        }}
+                                                    />
+                                                </Stack>
+                                                <Typography variant="body1" fontWeight={800} color="#0F172A">
+                                                    {pkt.message}
+                                                </Typography>
+                                                <Typography variant="body2" color="#334155" fontWeight={700} sx={{ mt: 0.5, display: "block" }}>
+                                                    Path: {(pkt.hop_path || [meshStats.nodeId]).join(" ──BLE──> ")}
+                                                </Typography>
+                                            </Box>
+                                        </Paper>
+                                    ))}
+                                </Stack>
+                            )}
+                        </Paper>
+                    </Stack>
+                )}
+
+                {/* 3. MY STATUS TRACKER */}
+                {currentTab === 3 && (
                     <Stack spacing={3}>
                         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <Typography variant="h6" fontWeight={800} color="#0F172A">

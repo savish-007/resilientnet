@@ -330,6 +330,20 @@ const batchMeshSync = async (req, res) => {
             await client.query("COMMIT");
             ingestedCount++;
 
+            // Record sync audit in sync_logs
+            try {
+                if (mesh_message_id) {
+                    await pool.query(
+                        `INSERT INTO sync_logs (device_id, mesh_message_id, sync_status, synced_at)
+                         VALUES ($1, $2, 'SYNCED', NOW())
+                         ON CONFLICT (mesh_message_id) DO NOTHING`,
+                        [packet.device_id || req.body.device_id || "GATEWAY-MOBILE", String(mesh_message_id).trim()]
+                    );
+                }
+            } catch (syncErr) {
+                console.warn("sync_logs recording error:", syncErr.message);
+            }
+
             // Run AI analysis
             try {
                 await performAIAnalysis(incident.id);
@@ -337,13 +351,15 @@ const batchMeshSync = async (req, res) => {
                 console.error("Batch AI error:", err.message);
             }
 
-            // Realtime Socket.IO Broadcast
+            // Realtime Socket.IO Broadcast to Command Center
             try {
                 const io = getIO();
                 io.emit("newSOS", {
                     ...sosResult.rows[0],
                     sender_name: "Mesh Emergency Relay",
-                    is_mesh_relay: true
+                    is_mesh_relay: true,
+                    hops: packet.hops || 1,
+                    hop_path: packet.hop_path || ["ORIGIN_DEVICE", "GATEWAY"]
                 });
             } catch (e) {}
 
@@ -351,7 +367,8 @@ const batchMeshSync = async (req, res) => {
                 mesh_message_id: mesh_message_id || null,
                 status: "INGESTED",
                 sos_id: sosResult.rows[0].id,
-                incident_id: incident.id
+                incident_id: incident.id,
+                hops: packet.hops || 1
             });
         } catch (err) {
             await client.query("ROLLBACK");
@@ -437,12 +454,18 @@ const getAllSOS = async (req, res) => {
                     s.status,
                     s.created_at,
                     s.incident_id,
+                    s.mesh_message_id,
+                    CASE WHEN s.mesh_message_id IS NOT NULL THEN true ELSE false END AS is_mesh_relay,
+                    i.title AS incident_title,
+                    i.incident_number,
                     ST_Y(s.location::geometry) AS latitude,
                     ST_X(s.location::geometry) AS longitude,
                     u.full_name AS sender_name
                 FROM sos_reports s
                 LEFT JOIN users u
                     ON s.sender_id = u.id
+                LEFT JOIN incidents i
+                    ON s.incident_id = i.id
                 WHERE s.sender_id = $1
                 ORDER BY s.created_at DESC
               `
@@ -455,12 +478,18 @@ const getAllSOS = async (req, res) => {
                     s.status,
                     s.created_at,
                     s.incident_id,
+                    s.mesh_message_id,
+                    CASE WHEN s.mesh_message_id IS NOT NULL THEN true ELSE false END AS is_mesh_relay,
+                    i.title AS incident_title,
+                    i.incident_number,
                     ST_Y(s.location::geometry) AS latitude,
                     ST_X(s.location::geometry) AS longitude,
                     u.full_name AS sender_name
                 FROM sos_reports s
                 LEFT JOIN users u
                     ON s.sender_id = u.id
+                LEFT JOIN incidents i
+                    ON s.incident_id = i.id
                 ORDER BY s.created_at DESC
               `;
 

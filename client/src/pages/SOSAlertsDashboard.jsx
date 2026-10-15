@@ -44,6 +44,11 @@ import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
 import LocalHospitalRoundedIcon from "@mui/icons-material/LocalHospitalRounded";
+import BluetoothRoundedIcon from "@mui/icons-material/BluetoothRounded";
+import HubRoundedIcon from "@mui/icons-material/HubRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import WifiOffRoundedIcon from "@mui/icons-material/WifiOffRounded";
+import CloudDoneRoundedIcon from "@mui/icons-material/CloudDoneRounded";
 
 import socket from "../services/socket";
 import { API_BASE_URL } from "../config/apiConfig";
@@ -61,9 +66,11 @@ const SOSAlertsDashboard = () => {
     const [statusFilter, setStatusFilter] = useState("ALL");
     const [categoryFilter, setCategoryFilter] = useState("ALL");
 
-    // Incident resolution
+    // Incident resolution & Mesh Trace
     const [resolvingId, setResolvingId] = useState(null);
     const [selectedAlert, setSelectedAlert] = useState(null);
+    const [selectedMeshAlert, setSelectedMeshAlert] = useState(null);
+    const [meshFilterOnly, setMeshFilterOnly] = useState(false);
 
     const token = localStorage.getItem("token");
 
@@ -191,9 +198,12 @@ const SOSAlertsDashboard = () => {
                 categoryFilter === "ALL" ||
                 String(item.category).toUpperCase() === categoryFilter.toUpperCase();
 
-            return matchesSearch && matchesSeverity && matchesStatus && matchesCategory;
+            const matchesMesh =
+                !meshFilterOnly || Boolean(item.is_mesh_relay || item.mesh_message_id);
+
+            return matchesSearch && matchesSeverity && matchesStatus && matchesCategory && matchesMesh;
         });
-    }, [alerts, search, severityFilter, statusFilter, categoryFilter]);
+    }, [alerts, search, severityFilter, statusFilter, categoryFilter, meshFilterOnly]);
 
     // -------------------------------------------------------------
     // METRICS SUMMARY
@@ -203,7 +213,8 @@ const SOSAlertsDashboard = () => {
         const critical = alerts.filter((a) => String(a.severity).toUpperCase() === "HIGH").length;
         const active = alerts.filter((a) => String(a.status || "NEW").toUpperCase() === "NEW").length;
         const resolved = alerts.filter((a) => String(a.status).toUpperCase() === "RESOLVED").length;
-        return { total, critical, active, resolved };
+        const meshRelays = alerts.filter((a) => Boolean(a.is_mesh_relay || a.mesh_message_id)).length;
+        return { total, critical, active, resolved, meshRelays };
     }, [alerts]);
 
     // Unique categories for filter dropdown
@@ -386,7 +397,7 @@ const SOSAlertsDashboard = () => {
 
                     {/* Summary Metrics Cards */}
                     <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
-                        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
                             <Card
                                 elevation={0}
                                 sx={{
@@ -399,7 +410,7 @@ const SOSAlertsDashboard = () => {
                             >
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                                     <Typography variant="body2" color="#64748B" fontWeight={700}>
-                                        TOTAL DISTRESS CALLS
+                                        TOTAL CALLS
                                     </Typography>
                                     <Box sx={{ p: 1, borderRadius: "12px", bgcolor: "#F1F5F9", color: "#475569" }}>
                                         <NotificationsActiveRoundedIcon fontSize="small" />
@@ -409,12 +420,12 @@ const SOSAlertsDashboard = () => {
                                     {metrics.total}
                                 </Typography>
                                 <Typography variant="caption" color="#94A3B8" fontWeight={600}>
-                                    All logged emergency reports
+                                    All logged reports
                                 </Typography>
                             </Card>
                         </Grid>
 
-                        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
                             <Card
                                 elevation={0}
                                 sx={{
@@ -437,12 +448,12 @@ const SOSAlertsDashboard = () => {
                                     {metrics.critical}
                                 </Typography>
                                 <Typography variant="caption" color="#DC2626" fontWeight={600}>
-                                    Requires urgent rescue intervention
+                                    Urgent rescue needed
                                 </Typography>
                             </Card>
                         </Grid>
 
-                        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
                             <Card
                                 elevation={0}
                                 sx={{
@@ -455,7 +466,7 @@ const SOSAlertsDashboard = () => {
                             >
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                                     <Typography variant="body2" color="#D97706" fontWeight={750}>
-                                        PENDING DISPATCH
+                                        PENDING
                                     </Typography>
                                     <Box sx={{ p: 1, borderRadius: "12px", bgcolor: "#FEF3C7", color: "#D97706" }}>
                                         <ShieldRoundedIcon fontSize="small" />
@@ -465,12 +476,12 @@ const SOSAlertsDashboard = () => {
                                     {metrics.active}
                                 </Typography>
                                 <Typography variant="caption" color="#B45309" fontWeight={600}>
-                                    Awaiting volunteer / supply allocation
+                                    Awaiting dispatch
                                 </Typography>
                             </Card>
                         </Grid>
 
-                        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
                             <Card
                                 elevation={0}
                                 sx={{
@@ -483,7 +494,7 @@ const SOSAlertsDashboard = () => {
                             >
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                                     <Typography variant="body2" color="#059669" fontWeight={750}>
-                                        SECURED / RESOLVED
+                                        RESOLVED
                                     </Typography>
                                     <Box sx={{ p: 1, borderRadius: "12px", bgcolor: "#D1FAE5", color: "#059669" }}>
                                         <CheckCircleRoundedIcon fontSize="small" />
@@ -493,7 +504,47 @@ const SOSAlertsDashboard = () => {
                                     {metrics.resolved}
                                 </Typography>
                                 <Typography variant="caption" color="#059669" fontWeight={600}>
-                                    Victims evacuated & safe
+                                    Evacuated & safe
+                                </Typography>
+                            </Card>
+                        </Grid>
+
+                        <Grid size={{ xs: 12, sm: 6, md: 2.4 }}>
+                            <Card
+                                elevation={0}
+                                onClick={() => setMeshFilterOnly(!meshFilterOnly)}
+                                sx={{
+                                    p: 2.5,
+                                    borderRadius: "20px",
+                                    border: `1.5px solid ${meshFilterOnly ? "#0284C7" : "rgba(2, 132, 199, 0.25)"}`,
+                                    bgcolor: meshFilterOnly ? "rgba(2, 132, 199, 0.12)" : "rgba(240, 249, 255, 0.7)",
+                                    boxShadow: "0 2px 10px rgba(2, 132, 199, 0.08)",
+                                    cursor: "pointer",
+                                    transition: "all 0.2s",
+                                    "&:hover": {
+                                        borderColor: "#0284C7",
+                                        transform: "translateY(-2px)"
+                                    }
+                                }}
+                            >
+                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                    <Typography variant="body2" color="#0369A1" fontWeight={750}>
+                                        BLE MESH RELAYS
+                                    </Typography>
+                                    <Box sx={{ p: 1, borderRadius: "12px", bgcolor: "#E0F2FE", color: "#0284C7" }}>
+                                        <BluetoothRoundedIcon fontSize="small" />
+                                    </Box>
+                                </Stack>
+                                <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mt: 1.5 }}>
+                                    <Typography variant="h4" fontWeight={900} sx={{ color: "#0284C7" }}>
+                                        {metrics.meshRelays}
+                                    </Typography>
+                                    {meshFilterOnly && (
+                                        <Chip label="FILTERED" size="small" sx={{ bgcolor: "#0284C7", color: "#FFF", fontSize: "0.62rem", fontWeight: 800, height: 18 }} />
+                                    )}
+                                </Stack>
+                                <Typography variant="caption" color="#0369A1" fontWeight={600}>
+                                    Offline P2P Store & Forward
                                 </Typography>
                             </Card>
                         </Grid>
@@ -511,7 +562,7 @@ const SOSAlertsDashboard = () => {
                         }}
                     >
                         <Grid container spacing={2} alignItems="center">
-                            <Grid size={{ xs: 12, md: 5 }}>
+                            <Grid size={{ xs: 12, md: 4 }}>
                                 <TextField
                                     fullWidth
                                     size="small"
@@ -536,7 +587,7 @@ const SOSAlertsDashboard = () => {
                                 />
                             </Grid>
 
-                            <Grid size={{ xs: 12, sm: 4, md: 2.5 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                 <FormControl fullWidth size="small">
                                     <InputLabel>Severity</InputLabel>
                                     <Select
@@ -553,12 +604,12 @@ const SOSAlertsDashboard = () => {
                                 </FormControl>
                             </Grid>
 
-                            <Grid size={{ xs: 12, sm: 4, md: 2.5 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                 <FormControl fullWidth size="small">
-                                    <InputLabel>Incident Status</InputLabel>
+                                    <InputLabel>Status</InputLabel>
                                     <Select
                                         value={statusFilter}
-                                        label="Incident Status"
+                                        label="Status"
                                         onChange={(e) => setStatusFilter(e.target.value)}
                                         sx={{ borderRadius: "12px", bgcolor: "#F8FAFC" }}
                                     >
@@ -570,7 +621,7 @@ const SOSAlertsDashboard = () => {
                                 </FormControl>
                             </Grid>
 
-                            <Grid size={{ xs: 12, sm: 4, md: 2 }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                                 <FormControl fullWidth size="small">
                                     <InputLabel>Category</InputLabel>
                                     <Select
@@ -587,6 +638,30 @@ const SOSAlertsDashboard = () => {
                                         ))}
                                     </Select>
                                 </FormControl>
+                            </Grid>
+
+                            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                                <Button
+                                    fullWidth
+                                    variant={meshFilterOnly ? "contained" : "outlined"}
+                                    onClick={() => setMeshFilterOnly(!meshFilterOnly)}
+                                    startIcon={<BluetoothRoundedIcon />}
+                                    sx={{
+                                        borderRadius: "12px",
+                                        height: 40,
+                                        textTransform: "none",
+                                        fontWeight: 800,
+                                        fontSize: "0.78rem",
+                                        bgcolor: meshFilterOnly ? "#0284C7" : "rgba(2, 132, 199, 0.05)",
+                                        borderColor: "#0284C7",
+                                        color: meshFilterOnly ? "#FFFFFF" : "#0284C7",
+                                        "&:hover": {
+                                            bgcolor: meshFilterOnly ? "#0369A1" : "rgba(2, 132, 199, 0.12)"
+                                        }
+                                    }}
+                                >
+                                    {meshFilterOnly ? "All Alerts" : `Mesh Only (${metrics.meshRelays})`}
+                                </Button>
                             </Grid>
                         </Grid>
                     </Card>
@@ -660,20 +735,43 @@ const SOSAlertsDashboard = () => {
                                             }}
                                         >
                                             <CardContent sx={{ p: 3, flex: 1, display: "flex", flexDirection: "column" }}>
-                                                {/* Header row: Severity and Status */}
+                                                {/* Header row: Severity, BLE Mesh badge, and Status */}
                                                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                                                    <Chip
-                                                        label={sevStyle.label}
-                                                        size="small"
-                                                        sx={{
-                                                            bgcolor: sevStyle.bg,
-                                                            color: sevStyle.color,
-                                                            border: `1px solid ${sevStyle.border}`,
-                                                            fontWeight: 800,
-                                                            fontSize: "0.72rem",
-                                                            letterSpacing: "0.4px"
-                                                        }}
-                                                    />
+                                                    <Stack direction="row" spacing={1} alignItems="center">
+                                                        <Chip
+                                                            label={sevStyle.label}
+                                                            size="small"
+                                                            sx={{
+                                                                bgcolor: sevStyle.bg,
+                                                                color: sevStyle.color,
+                                                                border: `1px solid ${sevStyle.border}`,
+                                                                fontWeight: 800,
+                                                                fontSize: "0.72rem",
+                                                                letterSpacing: "0.4px"
+                                                            }}
+                                                        />
+
+                                                        {Boolean(item.is_mesh_relay || item.mesh_message_id) && (
+                                                            <Chip
+                                                                icon={<BluetoothRoundedIcon sx={{ fontSize: "14px !important", color: "#0284C7 !important" }} />}
+                                                                label={item.hops ? `BLE MESH (${item.hops} HOPS)` : "BLE MESH RELAY"}
+                                                                size="small"
+                                                                onClick={() => setSelectedMeshAlert(item)}
+                                                                clickable
+                                                                sx={{
+                                                                    bgcolor: "rgba(2, 132, 199, 0.12)",
+                                                                    color: "#0284C7",
+                                                                    border: "1px solid rgba(2, 132, 199, 0.35)",
+                                                                    fontWeight: 800,
+                                                                    fontSize: "0.68rem",
+                                                                    cursor: "pointer",
+                                                                    "&:hover": {
+                                                                        bgcolor: "rgba(2, 132, 199, 0.22)"
+                                                                    }
+                                                                }}
+                                                            />
+                                                        )}
+                                                    </Stack>
 
                                                     <Chip
                                                         label={statStyle.label}
@@ -780,6 +878,52 @@ const SOSAlertsDashboard = () => {
                                                     </Box>
                                                 )}
 
+                                                {Boolean(item.is_mesh_relay || item.mesh_message_id) && (
+                                                    <Box
+                                                        onClick={() => setSelectedMeshAlert(item)}
+                                                        sx={{
+                                                            p: 1.2,
+                                                            mb: 1.5,
+                                                            borderRadius: "12px",
+                                                            bgcolor: "rgba(2, 132, 199, 0.06)",
+                                                            border: "1px dashed rgba(2, 132, 199, 0.4)",
+                                                            cursor: "pointer",
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            justifyContent: "space-between",
+                                                            transition: "all 0.2s",
+                                                            "&:hover": {
+                                                                bgcolor: "rgba(2, 132, 199, 0.14)"
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Stack direction="row" spacing={1} alignItems="center">
+                                                            <HubRoundedIcon sx={{ fontSize: 18, color: "#0284C7" }} />
+                                                            <Box>
+                                                                <Typography variant="caption" sx={{ color: "#0369A1", fontWeight: 800, display: "block", lineHeight: 1.2 }}>
+                                                                    Offline Hop Route Available
+                                                                </Typography>
+                                                                <Typography variant="caption" sx={{ color: "#64748B", fontSize: "0.68rem" }}>
+                                                                    {item.mesh_message_id ? `ID: ${item.mesh_message_id.slice(0, 16)}...` : "Carried via BLE peer nodes"}
+                                                                </Typography>
+                                                            </Box>
+                                                        </Stack>
+                                                        <Button
+                                                            size="small"
+                                                            sx={{
+                                                                fontSize: "0.72rem",
+                                                                fontWeight: 800,
+                                                                color: "#0284C7",
+                                                                textTransform: "none",
+                                                                p: 0,
+                                                                minWidth: "auto"
+                                                            }}
+                                                        >
+                                                            View Route →
+                                                        </Button>
+                                                    </Box>
+                                                )}
+
                                                 <Box sx={{ flexGrow: 1 }} />
                                                 <Divider sx={{ my: 1.5, borderColor: "#F1F5F9" }} />
 
@@ -855,6 +999,238 @@ const SOSAlertsDashboard = () => {
                     )}
                 </div>
             </div>
+
+            {/* Mesh Packet Multi-Hop Route Inspection Dialog */}
+            <Dialog
+                open={Boolean(selectedMeshAlert)}
+                onClose={() => setSelectedMeshAlert(null)}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: "24px",
+                        bgcolor: "#0F172A",
+                        color: "#FFFFFF",
+                        border: "1px solid rgba(2, 132, 199, 0.3)",
+                        boxShadow: "0 25px 60px rgba(0,0,0,0.6)",
+                        p: 1
+                    }
+                }}
+            >
+                <DialogTitle sx={{ pb: 1 }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                        <Box
+                            sx={{
+                                width: 44,
+                                height: 44,
+                                borderRadius: "14px",
+                                bgcolor: "rgba(2, 132, 199, 0.2)",
+                                border: "1px solid rgba(2, 132, 199, 0.4)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center"
+                            }}
+                        >
+                            <BluetoothRoundedIcon sx={{ color: "#38BDF8", fontSize: 26 }} />
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                            <Typography variant="h6" fontWeight={850} color="#FFFFFF" letterSpacing="-0.3px">
+                                Offline BLE Mesh Hop Trail
+                            </Typography>
+                            <Typography variant="caption" color="#94A3B8">
+                                Multi-Hop Store-and-Forward Relay Telemetry
+                            </Typography>
+                        </Box>
+                        <Chip
+                            label="PEER-TO-PEER"
+                            size="small"
+                            sx={{
+                                bgcolor: "rgba(56, 189, 248, 0.15)",
+                                color: "#38BDF8",
+                                fontWeight: 800,
+                                fontSize: "0.68rem"
+                            }}
+                        />
+                    </Stack>
+                </DialogTitle>
+
+                <DialogContent sx={{ py: 2 }}>
+                    {selectedMeshAlert && (
+                        <Stack spacing={2.5}>
+                            {/* Packet Summary Box */}
+                            <Paper
+                                elevation={0}
+                                sx={{
+                                    p: 2,
+                                    borderRadius: "16px",
+                                    bgcolor: "rgba(30, 41, 59, 0.6)",
+                                    border: "1px solid rgba(255, 255, 255, 0.08)"
+                                }}
+                            >
+                                <Typography variant="caption" color="#64748B" fontWeight={750} sx={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    Distress Packet Payload
+                                </Typography>
+                                <Typography variant="body1" fontWeight={750} color="#F8FAFC" sx={{ mt: 0.5, mb: 1.2 }}>
+                                    "{selectedMeshAlert.message}"
+                                </Typography>
+
+                                <Grid container spacing={1.5}>
+                                    <Grid size={{ xs: 6 }}>
+                                        <Typography variant="caption" color="#64748B" display="block">
+                                            Mesh Message ID
+                                        </Typography>
+                                        <Typography variant="caption" fontWeight={700} color="#38BDF8" sx={{ wordBreak: "break-all" }}>
+                                            {selectedMeshAlert.mesh_message_id || `MESH-${String(selectedMeshAlert.id).slice(0, 12)}`}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 6 }}>
+                                        <Typography variant="caption" color="#64748B" display="block">
+                                            Sender Identity
+                                        </Typography>
+                                        <Typography variant="caption" fontWeight={700} color="#F8FAFC">
+                                            {selectedMeshAlert.sender_name || "Offline Citizen"}
+                                        </Typography>
+                                    </Grid>
+                                </Grid>
+                            </Paper>
+
+                            {/* Hop Pathway Trace */}
+                            <Box sx={{ px: 1 }}>
+                                <Typography variant="subtitle2" fontWeight={800} color="#E2E8F0" sx={{ mb: 2 }}>
+                                    Relay Transmission Sequence
+                                </Typography>
+
+                                <Stack spacing={2} sx={{ position: "relative" }}>
+                                    {/* Step 1: Origin */}
+                                    <Stack direction="row" spacing={2} alignItems="flex-start">
+                                        <Box
+                                            sx={{
+                                                width: 36,
+                                                height: 36,
+                                                borderRadius: "50%",
+                                                bgcolor: "rgba(239, 68, 68, 0.2)",
+                                                border: "2px solid #EF4444",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            <WifiOffRoundedIcon sx={{ fontSize: 18, color: "#EF4444" }} />
+                                        </Box>
+                                        <Box sx={{ flex: 1 }}>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                                <Typography variant="body2" fontWeight={800} color="#F8FAFC">
+                                                    Hop 0: Originating Offline Phone
+                                                </Typography>
+                                                <Chip label="DISTRESS BEACON" size="small" sx={{ bgcolor: "rgba(239, 68, 68, 0.15)", color: "#F87171", fontSize: "0.62rem", fontWeight: 800, height: 20 }} />
+                                            </Stack>
+                                            <Typography variant="caption" color="#94A3B8" sx={{ display: "block", mt: 0.3 }}>
+                                                Distress SOS generated without internet. Queued locally in device Store-and-Forward Outbox and broadcasted over BLE / Wi-Fi Direct.
+                                            </Typography>
+                                        </Box>
+                                    </Stack>
+
+                                    {/* Step 2: Peer-to-Peer Relay */}
+                                    <Stack direction="row" spacing={2} alignItems="flex-start">
+                                        <Box
+                                            sx={{
+                                                width: 36,
+                                                height: 36,
+                                                borderRadius: "50%",
+                                                bgcolor: "rgba(2, 132, 199, 0.2)",
+                                                border: "2px solid #0284C7",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            <BluetoothRoundedIcon sx={{ fontSize: 20, color: "#38BDF8" }} />
+                                        </Box>
+                                        <Box sx={{ flex: 1 }}>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                                <Typography variant="body2" fontWeight={800} color="#F8FAFC">
+                                                    Hop 1: Passing Mobile Peer (Data Mule)
+                                                </Typography>
+                                                <Chip label={`${selectedMeshAlert.hops || 1} MESH HOP(S)`} size="small" sx={{ bgcolor: "rgba(2, 132, 199, 0.2)", color: "#38BDF8", fontSize: "0.62rem", fontWeight: 800, height: 20 }} />
+                                            </Stack>
+                                            <Typography variant="caption" color="#94A3B8" sx={{ display: "block", mt: 0.3 }}>
+                                                Encountered passing phone running ResilientNet within Bluetooth radio perimeter (~30m). Packet transferred peer-to-peer and stored in mule cache.
+                                            </Typography>
+                                        </Box>
+                                    </Stack>
+
+                                    {/* Step 3: Gateway Uplink */}
+                                    <Stack direction="row" spacing={2} alignItems="flex-start">
+                                        <Box
+                                            sx={{
+                                                width: 36,
+                                                height: 36,
+                                                borderRadius: "50%",
+                                                bgcolor: "rgba(16, 185, 129, 0.2)",
+                                                border: "2px solid #10B981",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            <CloudDoneRoundedIcon sx={{ fontSize: 18, color: "#10B981" }} />
+                                        </Box>
+                                        <Box sx={{ flex: 1 }}>
+                                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                                <Typography variant="body2" fontWeight={800} color="#F8FAFC">
+                                                    Hop 2: Internet Gateway Uplink
+                                                </Typography>
+                                                <Chip label="HQ SYNCHRONIZED" size="small" sx={{ bgcolor: "rgba(16, 185, 129, 0.15)", color: "#34D399", fontSize: "0.62rem", fontWeight: 800, height: 20 }} />
+                                            </Stack>
+                                            <Typography variant="caption" color="#94A3B8" sx={{ display: "block", mt: 0.3 }}>
+                                                Mobile peer moved into range of surviving cellular / Wi-Fi network. Autonomous gateway service flushed packet to Rescue HQ via POST /api/sos/mesh-sync.
+                                            </Typography>
+                                        </Box>
+                                    </Stack>
+                                </Stack>
+                            </Box>
+                        </Stack>
+                    )}
+                </DialogContent>
+
+                <DialogActions sx={{ p: 2, pt: 1 }}>
+                    <Button
+                        variant="outlined"
+                        onClick={() => {
+                            window.location.href = "/mesh";
+                        }}
+                        startIcon={<HubRoundedIcon />}
+                        sx={{
+                            color: "#38BDF8",
+                            borderColor: "rgba(56, 189, 248, 0.4)",
+                            borderRadius: "12px",
+                            textTransform: "none",
+                            fontWeight: 750,
+                            "&:hover": { borderColor: "#38BDF8", bgcolor: "rgba(56, 189, 248, 0.08)" }
+                        }}
+                    >
+                        Open Mesh Terminal
+                    </Button>
+
+                    <Button
+                        variant="contained"
+                        onClick={() => setSelectedMeshAlert(null)}
+                        sx={{
+                            bgcolor: "#0284C7",
+                            color: "#FFFFFF",
+                            borderRadius: "12px",
+                            textTransform: "none",
+                            fontWeight: 800,
+                            "&:hover": { bgcolor: "#0369A1" }
+                        }}
+                    >
+                        Close Hop Trail
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </DashboardLayout>
     );
 };

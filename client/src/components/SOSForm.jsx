@@ -13,7 +13,9 @@ import {
 import MyLocationRoundedIcon from "@mui/icons-material/MyLocationRounded";
 import GpsFixedRoundedIcon from "@mui/icons-material/GpsFixedRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import BluetoothRoundedIcon from "@mui/icons-material/BluetoothRounded";
 import api from "../api/api";
+import meshService from "../services/meshService";
 
 const SOSForm = () => {
     const [message, setMessage] = useState("");
@@ -83,6 +85,26 @@ const SOSForm = () => {
         setLoading(true);
         setFeedback(null);
 
+        // 1. If explicitly offline, store in Bluetooth Mesh immediately
+        if (!navigator.onLine) {
+            const packet = meshService.createOfflineSOS({
+                message,
+                category,
+                severity,
+                latitude: location.latitude,
+                longitude: location.longitude,
+                sender_name: "Citizen (Web)"
+            });
+            setFeedback({
+                type: "info",
+                text: `No Internet Connection: Distress alert stored locally in Bluetooth Mesh Outbox [${packet.mesh_message_id}]. It will hop across passing devices until reaching rescue teams.`
+            });
+            setMessage("");
+            setLoading(false);
+            return;
+        }
+
+        // 2. If online, attempt direct POST
         try {
             await api.post("/sos", {
                 message,
@@ -98,10 +120,20 @@ const SOSForm = () => {
             });
             setMessage("");
         } catch (error) {
-            setFeedback({
-                type: "error",
-                text: error.response?.data?.message || "SOS submission failed."
+            // Network fallback: store in mesh outbox if server unreachable
+            const packet = meshService.createOfflineSOS({
+                message,
+                category,
+                severity,
+                latitude: location.latitude,
+                longitude: location.longitude,
+                sender_name: "Citizen (Web)"
             });
+            setFeedback({
+                type: "warning",
+                text: `Server unreachable: Emergency SOS saved in Bluetooth Mesh buffer [${packet.mesh_message_id}]. It will hop across passing devices and auto-sync when connection is restored.`
+            });
+            setMessage("");
         } finally {
             setLoading(false);
         }
@@ -146,6 +178,60 @@ const SOSForm = () => {
                         </Typography>
                     </Box>
                 </Stack>
+
+                {/* Bluetooth Mesh Banner in SOS Form */}
+                <Box
+                    sx={{
+                        p: 2,
+                        borderRadius: "14px",
+                        bgcolor: !navigator.onLine ? "#FFFBEB" : "#F0F9FF",
+                        border: `1.5px solid ${!navigator.onLine ? "#F59E0B" : "#0284C7"}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 1.5
+                    }}
+                >
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                        <Box
+                            sx={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: "12px",
+                                bgcolor: !navigator.onLine ? "#D97706" : "#0284C7",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                color: "#FFFFFF",
+                                flexShrink: 0
+                            }}
+                        >
+                            <BluetoothRoundedIcon sx={{ fontSize: 22 }} />
+                        </Box>
+                        <Box>
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                <Typography variant="subtitle2" fontWeight={850} color="#0F172A">
+                                    {navigator.onLine ? "Offline-Ready Bluetooth Mesh: ACTIVE" : "Offline Bluetooth Mesh Active (No Internet Required)"}
+                                </Typography>
+                                <Chip
+                                    label={navigator.onLine ? "ONLINE + MESH" : "OFFLINE MESH"}
+                                    size="small"
+                                    sx={{
+                                        bgcolor: navigator.onLine ? "#DCFCE7" : "#FEF3C7",
+                                        color: navigator.onLine ? "#15803D" : "#78350F",
+                                        fontWeight: 850,
+                                        fontSize: "0.7rem",
+                                        border: `1px solid ${navigator.onLine ? "#86EFAC" : "#FDE68A"}`
+                                    }}
+                                />
+                            </Stack>
+                            <Typography variant="caption" sx={{ color: "#1E293B", fontWeight: 700, mt: 0.3, display: "block" }}>
+                                Node: <strong style={{ color: "#0284C7" }}>{meshService.getNodeId()}</strong> • If internet is down, your SOS automatically hops across passing devices until reaching rescue teams.
+                            </Typography>
+                        </Box>
+                    </Stack>
+                </Box>
 
                 <Box
                     sx={{

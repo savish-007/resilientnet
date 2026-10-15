@@ -22,7 +22,8 @@ import {
     LocationOnRounded,
     NotificationsActiveRounded,
     InboxOutlined,
-    ArrowForwardRounded
+    ArrowForwardRounded,
+    BluetoothRounded
 } from "@mui/icons-material";
 
 const getSeverity = (severity) => {
@@ -298,31 +299,49 @@ const SOSList = () => {
                                             </Typography>
                                         </Box>
 
-                                        <Chip
-                                            size="small"
-                                            icon={
-                                                <WarningAmberRounded
+                                        <Stack direction="row" spacing={1} alignItems="center" flexShrink={0}>
+                                            {Boolean(alert.is_mesh_relay || alert.mesh_message_id) && (
+                                                <Chip
+                                                    size="small"
+                                                    icon={<BluetoothRounded sx={{ fontSize: "14px !important", color: "#0284C7 !important" }} />}
+                                                    label={alert.hops ? `BLE (${alert.hops}h)` : "BLE MESH"}
                                                     sx={{
-                                                        fontSize: "16px !important",
-                                                        color: `${severity.color} !important`
+                                                        height: 27,
+                                                        fontSize: 10,
+                                                        fontWeight: 800,
+                                                        color: "#0284C7",
+                                                        bgcolor: "#F0F9FF",
+                                                        border: "1px solid #BAE6FD",
+                                                        borderRadius: "8px"
                                                     }}
                                                 />
-                                            }
-                                            label={severity.label}
-                                            sx={{
-                                                flexShrink: 0,
-                                                height: 27,
-                                                fontSize: 10,
-                                                fontWeight: 800,
-                                                color: severity.color,
-                                                bgcolor: severity.background,
-                                                border: `1px solid ${severity.border}`,
-                                                borderRadius: "8px",
-                                                "& .MuiChip-label": {
-                                                    px: 1
+                                            )}
+                                            <Chip
+                                                size="small"
+                                                icon={
+                                                    <WarningAmberRounded
+                                                        sx={{
+                                                            fontSize: "16px !important",
+                                                            color: `${severity.color} !important`
+                                                        }}
+                                                    />
                                                 }
-                                            }}
-                                        />
+                                                label={severity.label}
+                                                sx={{
+                                                    flexShrink: 0,
+                                                    height: 27,
+                                                    fontSize: 10,
+                                                    fontWeight: 800,
+                                                    color: severity.color,
+                                                    bgcolor: severity.background,
+                                                    border: `1px solid ${severity.border}`,
+                                                    borderRadius: "8px",
+                                                    "& .MuiChip-label": {
+                                                        px: 1
+                                                    }
+                                                }}
+                                            />
+                                        </Stack>
                                     </Stack>
 
                                     {/* Incident message */}
